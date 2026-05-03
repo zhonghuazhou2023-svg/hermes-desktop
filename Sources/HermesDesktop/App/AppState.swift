@@ -204,7 +204,7 @@ final class AppState: ObservableObject {
         updatedProfile.lastConnectedAt = Date()
         connectionStore.upsert(updatedProfile)
         selectedSection = .overview
-        setStatusMessage("Connecting to \(profile.label)…")
+        setStatusMessage(L10n.string("Connecting to %@…", profile.label))
 
         Task {
             await prepareWorkspaceForActiveConnection()
@@ -232,7 +232,7 @@ final class AppState: ObservableObject {
 
         resetWorkspaceStateForConnectionChange()
         selectedSection = .overview
-        setStatusMessage("Refreshing \(normalized.label)…")
+        setStatusMessage(L10n.string("Refreshing %@…", normalized.label))
 
         Task {
             await prepareWorkspaceForActiveConnection()
@@ -261,7 +261,7 @@ final class AppState: ObservableObject {
         connectionStore.upsert(updatedConnection)
         await reloadWorkspaceScope(
             section: selectedSection,
-            statusMessage: "Switching to \(profileName)…"
+            statusMessage: L10n.string("Switching to %@…", profileName)
         )
     }
 
@@ -269,7 +269,7 @@ final class AppState: ObservableObject {
         Task {
             do {
                 isBusy = true
-                setStatusMessage("Testing \(profile.label)…")
+                setStatusMessage(L10n.string("Testing %@…", profile.label))
 
                 let script = try RemotePythonScript.wrap(
                     ConnectionTestRequest(),
@@ -294,7 +294,7 @@ final class AppState: ObservableObject {
 
                 isBusy = false
                 let home = response.remoteHome.trimmingCharacters(in: .whitespacesAndNewlines)
-                setStatusMessage("SSH and python3 OK for \(profile.label)")
+                setStatusMessage(L10n.string("SSH and python3 OK for %@", profile.label))
                 let messageLines = [
                     "SSH and python3 are available for this Hermes host.",
                     home.isEmpty ? nil : "Remote HOME: \(home)"
@@ -335,7 +335,7 @@ final class AppState: ObservableObject {
             }
             overview = nil
             overviewError = error.localizedDescription
-            setStatusMessage("Unable to refresh remote discovery")
+            setStatusMessage(L10n.string("Unable to refresh remote discovery"))
         }
     }
 
@@ -447,7 +447,7 @@ final class AppState: ObservableObject {
             document.hasLoaded = true
             document.isLoading = false
             setDocument(document)
-            setStatusMessage("\(reference.title) saved")
+            setStatusMessage(L10n.string("%@ saved", reference.title))
         } catch {
             document.isLoading = false
             document.errorMessage = error.localizedDescription
@@ -490,7 +490,7 @@ final class AppState: ObservableObject {
             workspaceFileDocuments[reference.id] = workspaceFileDocuments[reference.id] ??
                 FileEditorDocument(fileID: reference.id, title: reference.title, remotePath: reference.remotePath)
         }
-        setStatusMessage("\(reference.title) added to Workspace Files")
+        setStatusMessage(L10n.string("%@ added to Workspace Files", reference.title))
         return bookmark
     }
 
@@ -502,7 +502,7 @@ final class AppState: ObservableObject {
             selectedWorkspaceFileID = RemoteTrackedFile.memory.workspaceFileID
         }
 
-        setStatusMessage("Bookmark removed")
+        setStatusMessage(L10n.string("Bookmark removed"))
     }
 
     func browseWorkspaceDirectory(path: String? = nil) async {
@@ -523,7 +523,7 @@ final class AppState: ObservableObject {
         } catch {
             isLoadingWorkspaceFileBrowser = false
             workspaceFileBrowserError = error.localizedDescription
-            setStatusMessage("Unable to browse remote files")
+            setStatusMessage(L10n.string("Unable to browse remote files"))
         }
     }
 
@@ -580,7 +580,7 @@ final class AppState: ObservableObject {
         } catch {
             isLoadingSessions = false
             sessionsError = error.localizedDescription
-            setStatusMessage("Unable to load sessions")
+            setStatusMessage(L10n.string("Unable to load sessions"))
         }
     }
 
@@ -602,7 +602,7 @@ final class AppState: ObservableObject {
         } catch {
             setSessionMessages([])
             sessionsError = error.localizedDescription
-            setStatusMessage("Unable to load session transcript")
+            setStatusMessage(L10n.string("Unable to load session transcript"))
         }
     }
 
@@ -628,7 +628,7 @@ final class AppState: ObservableObject {
         )
         sessionConversationError = nil
         sessionsError = nil
-        setStatusMessage("Starting Hermes session…")
+        setStatusMessage(L10n.string("Starting Hermes session…"))
 
         do {
             _ = try await hermesChatService.sendMessage(
@@ -641,14 +641,14 @@ final class AppState: ObservableObject {
             isSendingSessionMessage = false
             pendingSessionTurn = nil
             sessionSearchQuery = ""
-            setStatusMessage("Hermes session saved on the host")
+            setStatusMessage(L10n.string("Hermes session saved on the host"))
             await loadSessions(reset: true, query: "")
             return true
         } catch {
             isSendingSessionMessage = false
             pendingSessionTurn = nil
             sessionConversationError = error.localizedDescription
-            setStatusMessage("Unable to start Hermes session")
+            setStatusMessage(L10n.string("Unable to start Hermes session"))
             return false
         }
     }
@@ -672,7 +672,7 @@ final class AppState: ObservableObject {
         sessionConversationError = nil
         sessionsError = nil
         startSessionTranscriptPolling(sessionID: selectedSessionID, connection: profile)
-        setStatusMessage("Sending prompt to Hermes…")
+        setStatusMessage(L10n.string("Sending prompt to Hermes…"))
 
         do {
             _ = try await hermesChatService.sendMessage(
@@ -685,7 +685,7 @@ final class AppState: ObservableObject {
             stopSessionTranscriptPolling()
             isSendingSessionMessage = false
             pendingSessionTurn = nil
-            setStatusMessage("Hermes response saved on the host")
+            setStatusMessage(L10n.string("Hermes response saved on the host"))
             await loadSessions(reset: true, query: sessionSearchQuery)
             return true
         } catch {
@@ -693,7 +693,7 @@ final class AppState: ObservableObject {
             isSendingSessionMessage = false
             pendingSessionTurn = nil
             sessionConversationError = error.localizedDescription
-            setStatusMessage("Unable to send prompt to Hermes")
+            setStatusMessage(L10n.string("Unable to send prompt to Hermes"))
             return false
         }
     }
@@ -715,11 +715,11 @@ final class AppState: ObservableObject {
             await loadSessions(reset: true)
             await loadUsage(forceRefresh: true)
             isDeletingSession = false
-            setStatusMessage("Session deleted locally and on the remote Hermes host")
+            setStatusMessage(L10n.string("Session deleted locally and on the remote Hermes host"))
         } catch {
             isDeletingSession = false
             sessionsError = error.localizedDescription
-            setStatusMessage("Unable to delete session")
+            setStatusMessage(L10n.string("Unable to delete session"))
         }
     }
 
@@ -756,7 +756,7 @@ final class AppState: ObservableObject {
             usageSummary = nil
             usageProfileBreakdown = nil
             usageError = error.localizedDescription
-            setStatusMessage("Unable to load usage")
+            setStatusMessage(L10n.string("Unable to load usage"))
         }
     }
 
@@ -796,7 +796,7 @@ final class AppState: ObservableObject {
         } catch {
             isLoadingSkills = false
             skillsError = error.localizedDescription
-            setStatusMessage("Unable to load skills")
+            setStatusMessage(L10n.string("Unable to load skills"))
         }
     }
 
@@ -822,7 +822,7 @@ final class AppState: ObservableObject {
             selectedSkillDetail = nil
             isLoadingSkillDetail = false
             skillsError = error.localizedDescription
-            setStatusMessage("Unable to load skill detail")
+            setStatusMessage(L10n.string("Unable to load skill detail"))
         }
     }
 
@@ -838,7 +838,7 @@ final class AppState: ObservableObject {
 
         isSavingSkillDraft = true
         skillsError = nil
-        setStatusMessage("Creating skill…")
+        setStatusMessage(L10n.string("Creating skill…"))
 
         do {
             let detail = try await skillBrowserService.createSkill(
@@ -849,12 +849,12 @@ final class AppState: ObservableObject {
             selectedSkillID = detail.id
             selectedSkillDetail = detail
             isSavingSkillDraft = false
-            setStatusMessage("\(draft.normalizedName) created")
+            setStatusMessage(L10n.string("%@ created", draft.normalizedName))
             return true
         } catch {
             isSavingSkillDraft = false
             skillsError = error.localizedDescription
-            setStatusMessage("Unable to create skill")
+            setStatusMessage(L10n.string("Unable to create skill"))
             return false
         }
     }
@@ -871,7 +871,7 @@ final class AppState: ObservableObject {
 
         let normalizedContent = markdownContent.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedContent.isEmpty else {
-            let message = "SKILL.md content cannot be empty."
+            let message = L10n.string("SKILL.md content cannot be empty.")
             skillsError = message
             setStatusMessage(message)
             return false
@@ -879,7 +879,7 @@ final class AppState: ObservableObject {
 
         isSavingSkillDraft = true
         skillsError = nil
-        setStatusMessage("Updating \(detail.resolvedName)…")
+        setStatusMessage(L10n.string("Updating %@…", detail.resolvedName))
 
         do {
             let updatedDetail = try await skillBrowserService.updateSkill(
@@ -895,12 +895,12 @@ final class AppState: ObservableObject {
             selectedSkillID = updatedDetail.id
             selectedSkillDetail = updatedDetail
             isSavingSkillDraft = false
-            setStatusMessage("\(updatedDetail.resolvedName) updated")
+            setStatusMessage(L10n.string("%@ updated", updatedDetail.resolvedName))
             return true
         } catch {
             isSavingSkillDraft = false
             skillsError = error.localizedDescription
-            setStatusMessage("Unable to update skill")
+            setStatusMessage(L10n.string("Unable to update skill"))
             return false
         }
     }
@@ -927,7 +927,7 @@ final class AppState: ObservableObject {
         } catch {
             isLoadingCronJobs = false
             cronJobsError = error.localizedDescription
-            setStatusMessage("Unable to load cron jobs")
+            setStatusMessage(L10n.string("Unable to load cron jobs"))
         }
     }
 
@@ -944,12 +944,12 @@ final class AppState: ObservableObject {
             await loadCronJobs()
             isOperatingOnCronJob = false
             operatingCronJobID = nil
-            setStatusMessage("\(job.resolvedName) paused")
+            setStatusMessage(L10n.string("%@ paused", job.resolvedName))
         } catch {
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             cronJobsError = error.localizedDescription
-            setStatusMessage("Unable to pause cron job")
+            setStatusMessage(L10n.string("Unable to pause cron job"))
         }
     }
 
@@ -965,19 +965,19 @@ final class AppState: ObservableObject {
 
         isSavingCronJobDraft = true
         cronJobsError = nil
-        setStatusMessage("Creating cron job…")
+        setStatusMessage(L10n.string("Creating cron job…"))
 
         do {
             let jobID = try await cronBrowserService.createJob(connection: profile, draft: draft)
             await loadCronJobs()
             selectedCronJobID = jobID
             isSavingCronJobDraft = false
-            setStatusMessage("\(draft.normalizedName) created")
+            setStatusMessage(L10n.string("%@ created", draft.normalizedName))
             return true
         } catch {
             isSavingCronJobDraft = false
             cronJobsError = error.localizedDescription
-            setStatusMessage("Unable to create cron job")
+            setStatusMessage(L10n.string("Unable to create cron job"))
             return false
         }
     }
@@ -994,19 +994,19 @@ final class AppState: ObservableObject {
 
         isSavingCronJobDraft = true
         cronJobsError = nil
-        setStatusMessage("Updating \(job.resolvedName)…")
+        setStatusMessage(L10n.string("Updating %@…", job.resolvedName))
 
         do {
             try await cronBrowserService.updateJob(connection: profile, jobID: job.id, draft: draft)
             await loadCronJobs()
             selectedCronJobID = job.id
             isSavingCronJobDraft = false
-            setStatusMessage("\(draft.normalizedName) updated")
+            setStatusMessage(L10n.string("%@ updated", draft.normalizedName))
             return true
         } catch {
             isSavingCronJobDraft = false
             cronJobsError = error.localizedDescription
-            setStatusMessage("Unable to update cron job")
+            setStatusMessage(L10n.string("Unable to update cron job"))
             return false
         }
     }
@@ -1024,12 +1024,12 @@ final class AppState: ObservableObject {
             await loadCronJobs()
             isOperatingOnCronJob = false
             operatingCronJobID = nil
-            setStatusMessage("\(job.resolvedName) resumed")
+            setStatusMessage(L10n.string("%@ resumed", job.resolvedName))
         } catch {
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             cronJobsError = error.localizedDescription
-            setStatusMessage("Unable to resume cron job")
+            setStatusMessage(L10n.string("Unable to resume cron job"))
         }
     }
 
@@ -1046,12 +1046,12 @@ final class AppState: ObservableObject {
             await loadCronJobs()
             isOperatingOnCronJob = false
             operatingCronJobID = nil
-            setStatusMessage("\(job.resolvedName) removed")
+            setStatusMessage(L10n.string("%@ removed", job.resolvedName))
         } catch {
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             cronJobsError = error.localizedDescription
-            setStatusMessage("Unable to remove cron job")
+            setStatusMessage(L10n.string("Unable to remove cron job"))
         }
     }
 
@@ -1062,19 +1062,19 @@ final class AppState: ObservableObject {
         isOperatingOnCronJob = true
         operatingCronJobID = job.id
         cronJobsError = nil
-        setStatusMessage("Triggering \(job.resolvedName)…")
+        setStatusMessage(L10n.string("Triggering %@…", job.resolvedName))
 
         do {
             try await cronBrowserService.runJobNow(connection: profile, jobID: job.id)
             await loadCronJobs()
             isOperatingOnCronJob = false
             operatingCronJobID = nil
-            setStatusMessage("Run requested for \(job.resolvedName)")
+            setStatusMessage(L10n.string("Run requested for %@", job.resolvedName))
         } catch {
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             cronJobsError = error.localizedDescription
-            setStatusMessage("Unable to run cron job")
+            setStatusMessage(L10n.string("Unable to run cron job"))
         }
     }
 
@@ -1096,7 +1096,7 @@ final class AppState: ObservableObject {
     func resumeSessionInTerminal(_ session: SessionSummary) {
         guard let profile = activeConnection else {
             sessionsError = L10n.string("Select a connection before resuming a session in Terminal.")
-            setStatusMessage("No active connection")
+            setStatusMessage(L10n.string("No active connection"))
             return
         }
 
@@ -1107,7 +1107,7 @@ final class AppState: ObservableObject {
         )
         selectedSection = .terminal
         handleSectionEntry(.terminal)
-        setStatusMessage("Opening \(session.resolvedTitle) in Terminal…")
+        setStatusMessage(L10n.string("Opening %@ in Terminal…", session.resolvedTitle))
     }
 
     private func handleSectionEntry(_ section: AppSection) {

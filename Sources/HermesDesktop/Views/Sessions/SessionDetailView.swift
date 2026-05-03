@@ -770,7 +770,7 @@ private struct ToolMessageCard: View {
         HermesInsetSurface {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 8) {
-                    HermesBadge(text: "Tool", tint: .secondary, isMonospaced: false)
+                    HermesBadge(text: L10n.string("Tool"), tint: .secondary, isMonospaced: false)
 
                     if let summary,
                        let statusText = summary.statusText {

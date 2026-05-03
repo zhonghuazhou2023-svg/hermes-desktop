@@ -183,7 +183,7 @@ struct SessionToolMessageSummary: Hashable, Sendable {
 
         guard let content,
               !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            title = "Tool turn"
+            title = L10n.string("Tool turn")
             preview = nil
             statusText = nil
             statusKind = .neutral
@@ -193,7 +193,7 @@ struct SessionToolMessageSummary: Hashable, Sendable {
         let payload = Self.jsonPayload(from: content)
         statusKind = Self.statusKind(from: payload)
         statusText = Self.statusText(for: statusKind, payload: payload)
-        title = Self.title(from: payload) ?? "Tool output"
+        title = Self.title(from: payload) ?? L10n.string("Tool output")
         preview = Self.preview(from: payload) ?? Self.snippet(from: content)
     }
 
@@ -229,15 +229,15 @@ struct SessionToolMessageSummary: Hashable, Sendable {
     private static func statusText(for statusKind: SessionToolStatusKind, payload: [String: Any]?) -> String? {
         switch statusKind {
         case .success:
-            return "Succeeded"
+            return L10n.string("Succeeded")
         case .failure:
-            return "Failed"
+            return L10n.string("Failed")
         case .neutral:
             guard let payload,
                   let exitCode = payload["exit_code"] as? Int else {
                 return nil
             }
-            return "Exit \(exitCode)"
+            return L10n.string("Exit %@", "\(exitCode)")
         }
     }
 
@@ -246,28 +246,28 @@ struct SessionToolMessageSummary: Hashable, Sendable {
 
         if let files = payload["files_modified"] as? [String], !files.isEmpty {
             if files.count == 1, let fileName = files.first?.split(separator: "/").last {
-                return "Modified \(fileName)"
+                return L10n.string("Modified %@", String(fileName))
             }
 
-            return "Modified \(files.count) files"
+            return L10n.string("Modified %@ files", "\(files.count)")
         }
 
         if let lint = payload["lint"] as? [String: Any],
            let status = stringValue(lint["status"]),
            !status.isEmpty {
-            return "Lint \(status)"
+            return L10n.string("Lint %@", status)
         }
 
         if let error = stringValue(payload["error"]), !error.isEmpty {
-            return "Tool error"
+            return L10n.string("Tool error")
         }
 
         if let diff = stringValue(payload["diff"]), !diff.isEmpty {
-            return "Tool diff"
+            return L10n.string("Tool diff")
         }
 
         if let output = stringValue(payload["output"]), !output.isEmpty {
-            return "Tool output"
+            return L10n.string("Tool output")
         }
 
         return nil
