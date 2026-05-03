@@ -129,6 +129,10 @@ final class AppState: ObservableObject {
             .map(WorkspaceFileReference.bookmark)
     }
 
+    var bookmarkedWorkspaceFileGroups: [WorkspaceFileBookmarkGroup] {
+        WorkspaceFileBookmarkGroup.groups(for: bookmarkedWorkspaceFileReferences)
+    }
+
     var workspaceFileReferences: [WorkspaceFileReference] {
         canonicalWorkspaceFileReferences + bookmarkedWorkspaceFileReferences
     }
@@ -459,7 +463,11 @@ final class AppState: ObservableObject {
     }
 
     @discardableResult
-    func addWorkspaceFileBookmark(remotePath: String, title: String? = nil) -> WorkspaceFileBookmark? {
+    func addWorkspaceFileBookmark(
+        remotePath: String,
+        title: String? = nil,
+        selectAfterAdd: Bool = true
+    ) -> WorkspaceFileBookmark? {
         guard let activeConnection else { return nil }
         guard let bookmark = connectionStore.upsertWorkspaceFileBookmark(
             remotePath: remotePath,
@@ -470,9 +478,11 @@ final class AppState: ObservableObject {
         }
 
         let reference = WorkspaceFileReference.bookmark(bookmark)
-        selectedWorkspaceFileID = reference.id
-        workspaceFileDocuments[reference.id] = workspaceFileDocuments[reference.id] ??
-            FileEditorDocument(fileID: reference.id, title: reference.title, remotePath: reference.remotePath)
+        if selectAfterAdd {
+            selectedWorkspaceFileID = reference.id
+            workspaceFileDocuments[reference.id] = workspaceFileDocuments[reference.id] ??
+                FileEditorDocument(fileID: reference.id, title: reference.title, remotePath: reference.remotePath)
+        }
         setStatusMessage("\(reference.title) added to Workspace Files")
         return bookmark
     }

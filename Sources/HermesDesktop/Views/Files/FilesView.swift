@@ -4,6 +4,7 @@ struct FilesView: View {
     @EnvironmentObject private var appState: AppState
     @State private var pendingWorkspaceFileID: String?
     @State private var bookmarkPendingRemoval: UUID?
+    @State private var collapsedBookmarkGroupIDs: Set<String> = []
     @State private var showBrowserSheet = false
     @State private var showDiscardFileAlert = false
     @State private var showReloadDiscardAlert = false
@@ -93,10 +94,10 @@ struct FilesView: View {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     fileGroup(title: "Canonical", references: appState.canonicalWorkspaceFileReferences)
 
-                    if appState.bookmarkedWorkspaceFileReferences.isEmpty {
+                    if appState.bookmarkedWorkspaceFileGroups.isEmpty {
                         emptyBookmarks
                     } else {
-                        fileGroup(title: "Bookmarks", references: appState.bookmarkedWorkspaceFileReferences)
+                        bookmarkGroups(appState.bookmarkedWorkspaceFileGroups)
                     }
                 }
             }
@@ -115,6 +116,7 @@ struct FilesView: View {
                 ForEach(references) { reference in
                     WorkspaceFileCardRow(
                         reference: reference,
+                        subtitle: reference.subtitle,
                         isSelected: reference.id == currentFileID,
                         isDirty: appState.workspaceFileDocument(for: reference.id)?.isDirty == true,
                         onSelect: {
@@ -130,6 +132,104 @@ struct FilesView: View {
                 }
             }
         }
+    }
+
+    private func bookmarkGroups(_ groups: [WorkspaceFileBookmarkGroup]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.string("Bookmarks"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(groups) { group in
+                    bookmarkFolderGroup(group)
+                }
+            }
+        }
+    }
+
+    private func bookmarkFolderGroup(_ group: WorkspaceFileBookmarkGroup) -> some View {
+        DisclosureGroup(isExpanded: bookmarkGroupExpansionBinding(for: group.id)) {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(group.references) { reference in
+                    WorkspaceFileCardRow(
+                        reference: reference,
+                        subtitle: groupedBookmarkSubtitle(for: reference),
+                        isSelected: reference.id == currentFileID,
+                        isDirty: appState.workspaceFileDocument(for: reference.id)?.isDirty == true,
+                        onSelect: {
+                            select(reference)
+                        },
+                        onRemove: reference.bookmarkID.map { bookmarkID in
+                            {
+                                bookmarkPendingRemoval = bookmarkID
+                                showRemoveBookmarkAlert = true
+                            }
+                        }
+                    )
+                }
+            }
+            .padding(.top, 10)
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: "folder")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(group.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Text(group.directoryPath)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 8)
+
+                Text("\(group.references.count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.secondary.opacity(0.10), in: Capsule())
+            }
+            .contentShape(Rectangle())
+        }
+        .tint(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.secondary.opacity(0.06))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    private func bookmarkGroupExpansionBinding(for groupID: String) -> Binding<Bool> {
+        Binding {
+            !collapsedBookmarkGroupIDs.contains(groupID)
+        } set: { isExpanded in
+            if isExpanded {
+                collapsedBookmarkGroupIDs.remove(groupID)
+            } else {
+                collapsedBookmarkGroupIDs.insert(groupID)
+            }
+        }
+    }
+
+    private func groupedBookmarkSubtitle(for reference: WorkspaceFileReference) -> String? {
+        let filename = WorkspaceFileBookmark.displayTitle(for: reference.remotePath)
+        return filename == reference.title ? nil : filename
     }
 
     private var emptyBookmarks: some View {
@@ -243,6 +343,7 @@ struct FilesView: View {
 
 private struct WorkspaceFileCardRow: View {
     let reference: WorkspaceFileReference
+    let subtitle: String?
     let isSelected: Bool
     let isDirty: Bool
     let onSelect: () -> Void
@@ -268,11 +369,13 @@ private struct WorkspaceFileCardRow: View {
                             }
                         }
 
-                        Text(reference.subtitle)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                        if let subtitle, !subtitle.isEmpty {
+                            Text(subtitle)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
 
                     Spacer(minLength: 10)
@@ -621,10 +724,16 @@ private struct WorkspaceFileBrowserSheet: View {
                 Text(L10n.string("Too large to edit"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+            } else if isBookmarked(entry) {
+                Button {
+                } label: {
+                    Label(L10n.string("Added"), systemImage: "checkmark")
+                }
+                .controlSize(.small)
+                .disabled(true)
             } else if entry.canBookmark {
                 Button {
-                    appState.addWorkspaceFileBookmark(remotePath: entry.displayPath)
-                    dismiss()
+                    addBookmark(entry)
                 } label: {
                     Label(L10n.string("Add"), systemImage: "plus")
                 }
@@ -635,9 +744,8 @@ private struct WorkspaceFileBrowserSheet: View {
         .onTapGesture(count: 2) {
             if entry.canOpenDirectory {
                 browse(entry.displayPath)
-            } else if entry.canBookmark {
-                appState.addWorkspaceFileBookmark(remotePath: entry.displayPath)
-                dismiss()
+            } else if entry.canBookmark, !isBookmarked(entry) {
+                addBookmark(entry)
             }
         }
     }
@@ -658,8 +766,17 @@ private struct WorkspaceFileBrowserSheet: View {
     private func addTypedPath() {
         let trimmed = pathText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        appState.addWorkspaceFileBookmark(remotePath: trimmed)
-        dismiss()
+        appState.addWorkspaceFileBookmark(remotePath: trimmed, selectAfterAdd: false)
+    }
+
+    private func addBookmark(_ entry: RemoteDirectoryEntry) {
+        appState.addWorkspaceFileBookmark(remotePath: entry.displayPath, selectAfterAdd: false)
+    }
+
+    private func isBookmarked(_ entry: RemoteDirectoryEntry) -> Bool {
+        appState.bookmarkedWorkspaceFileReferences.contains { reference in
+            reference.remotePath == entry.displayPath
+        }
     }
 
     private func entryIcon(for entry: RemoteDirectoryEntry) -> String {

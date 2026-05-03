@@ -101,6 +101,90 @@ struct WorkspaceFileReference: Identifiable, Hashable, Sendable {
     }
 }
 
+struct WorkspaceFileBookmarkGroup: Identifiable, Hashable, Sendable {
+    let directoryPath: String
+    let title: String
+    let references: [WorkspaceFileReference]
+
+    var id: String {
+        directoryPath
+    }
+
+    static func groups(for references: [WorkspaceFileReference]) -> [WorkspaceFileBookmarkGroup] {
+        let bookmarks = references.filter { $0.bookmarkID != nil }
+        let groupedReferences = Dictionary(grouping: bookmarks) { reference in
+            parentDirectoryPath(for: reference.remotePath)
+        }
+
+        return groupedReferences
+            .map { directoryPath, references in
+                WorkspaceFileBookmarkGroup(
+                    directoryPath: directoryPath,
+                    title: displayTitle(forDirectoryPath: directoryPath),
+                    references: references.sorted(by: compareReferences)
+                )
+            }
+            .sorted(by: compareGroups)
+    }
+
+    static func parentDirectoryPath(for remotePath: String) -> String {
+        let trimmed = remotePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmingTrailingSlashes(from: trimmed)
+        guard !normalized.isEmpty else { return "." }
+        guard normalized != "/" else { return "/" }
+        guard let slashIndex = normalized.lastIndex(of: "/") else { return "." }
+        guard slashIndex != normalized.startIndex else { return "/" }
+
+        return String(normalized[..<slashIndex])
+    }
+
+    static func displayTitle(forDirectoryPath directoryPath: String) -> String {
+        let trimmed = directoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmingTrailingSlashes(from: trimmed)
+        guard !normalized.isEmpty else { return "." }
+        guard normalized != "/" else { return "/" }
+
+        return normalized.split(separator: "/").last.map(String.init) ?? normalized
+    }
+
+    private static func compareGroups(
+        _ lhs: WorkspaceFileBookmarkGroup,
+        _ rhs: WorkspaceFileBookmarkGroup
+    ) -> Bool {
+        let pathComparison = lhs.directoryPath.localizedCaseInsensitiveCompare(rhs.directoryPath)
+        if pathComparison != .orderedSame {
+            return pathComparison == .orderedAscending
+        }
+
+        return lhs.directoryPath < rhs.directoryPath
+    }
+
+    private static func compareReferences(
+        _ lhs: WorkspaceFileReference,
+        _ rhs: WorkspaceFileReference
+    ) -> Bool {
+        let titleComparison = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
+        if titleComparison != .orderedSame {
+            return titleComparison == .orderedAscending
+        }
+
+        let pathComparison = lhs.remotePath.localizedCaseInsensitiveCompare(rhs.remotePath)
+        if pathComparison != .orderedSame {
+            return pathComparison == .orderedAscending
+        }
+
+        return lhs.id < rhs.id
+    }
+
+    private static func trimmingTrailingSlashes(from path: String) -> String {
+        var result = path
+        while result.count > 1, result.hasSuffix("/") {
+            result.removeLast()
+        }
+        return result
+    }
+}
+
 struct RemoteDirectoryListing: Decodable, Sendable {
     let requestedPath: String
     let resolvedPath: String
