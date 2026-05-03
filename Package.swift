@@ -30,10 +30,7 @@ let package = Package(
         ),
         .testTarget(
             name: "HermesDesktopTests",
-            dependencies: [
-                "HermesDesktop",
-                .product(name: "SwiftTerm", package: "SwiftTerm")
-            ],
+            dependencies: ["HermesDesktop"],
             path: "Tests/HermesDesktopTests"
         )
     ]

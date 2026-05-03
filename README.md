@@ -62,8 +62,7 @@ for the public README.
 - a profile-aware workspace where overview, files, sessions, usage, cron jobs,
   skills, and terminal behavior all resolve against the selected Hermes profile
 - a real embedded SSH terminal with multiple tabs across hosts and profiles,
-  stable resize behavior, plus quick themes and live background and text color
-  controls
+  plus quick themes and live background and text color controls
 - a natural multi-agent workflow on macOS: keep one tab on a shell, another on
   a scheduler, another on a different profile, all without inventing a second
   model of the host
@@ -307,9 +306,8 @@ If `Test` passes, `Use Host` should be on solid ground.
   conflict checks before save.
 - `Terminal`
   Opens the real SSH shell inside the app, with multiple tabs, quick theme
-  presets, live color tuning, resize behavior that preserves scrollback and
-  cursor position, and room for a genuinely multi-profile, multi-agent workflow
-  that still stays close to the host.
+  presets, live color tuning, and room for a genuinely multi-profile,
+  multi-agent workflow that still stays close to the host.
 
 ## Why It Feels Different
 
@@ -474,8 +472,8 @@ source of truth.
 - [x] profile-aware host workflows aligned with Hermes Agent profiles on the
   same SSH target
 - [x] native cron job workflows for the canonical remote scheduler state
-- [x] a real embedded SSH terminal with tabs, appearance controls,
-  resize-stable scrollback, and coherent multi-profile workspace behavior
+- [x] a real embedded SSH terminal with tabs, appearance controls, and coherent
+  multi-profile workspace behavior
 - [x] English, Simplified Chinese, and Russian localization resources packaged
   in the app bundle
 - [x] universal macOS release packaging for Apple Silicon and Intel, with

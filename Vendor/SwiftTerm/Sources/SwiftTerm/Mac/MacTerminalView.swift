@@ -677,11 +677,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
         updateScrollerFrame()
         updateProgressBarFrame()
         guard cellDimension != nil else { return }
-        let shouldRestoreTerminalEnd = isScrolledToTerminalEnd
         _ = processSizeChange(newSize: frame.size)
-        if shouldRestoreTerminalEnd {
-            scrollToTerminalEnd(notifyAccessibility: false)
-        }
 #if canImport(MetalKit)
         if useMetalRenderer {
             if inLiveResize && TerminalView.metalLiveResizeThrottleEnabled {
