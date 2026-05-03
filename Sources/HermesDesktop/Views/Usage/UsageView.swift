@@ -154,7 +154,7 @@ struct UsageView: View {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: 18) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Active Profile")
+                        Text(L10n.string("Active Profile"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
@@ -167,7 +167,7 @@ struct UsageView: View {
                     Spacer(minLength: 24)
 
                     VStack(alignment: .trailing, spacing: 6) {
-                        Text("Input + Output")
+                        Text(L10n.string("Input + Output"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
@@ -179,7 +179,7 @@ struct UsageView: View {
 
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Active Profile")
+                        Text(L10n.string("Active Profile"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
@@ -190,7 +190,7 @@ struct UsageView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Input + Output")
+                        Text(L10n.string("Input + Output"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
@@ -212,7 +212,7 @@ struct UsageView: View {
                 ContentUnavailableView(
                     "Not enough profile data yet",
                     systemImage: "chart.pie",
-                    description: Text("At least two profiles need readable usage data before the cross-profile breakdown becomes meaningful.")
+                    description: Text(L10n.string("At least two profiles need readable usage data before the cross-profile breakdown becomes meaningful."))
                 )
                 .frame(maxWidth: .infinity, minHeight: 260)
             } else {
@@ -522,7 +522,7 @@ struct UsageView: View {
                 ContentUnavailableView(
                     "No recent sessions available",
                     systemImage: "chart.bar.xaxis",
-                    description: Text("Recent session usage will appear here once Hermes has stored session data.")
+                    description: Text(L10n.string("Recent session usage will appear here once Hermes has stored session data."))
                 )
                 .frame(maxWidth: .infinity, minHeight: 240)
             } else {

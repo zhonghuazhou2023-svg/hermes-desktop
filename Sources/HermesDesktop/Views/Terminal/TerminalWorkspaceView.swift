@@ -62,9 +62,9 @@ struct TerminalWorkspaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else {
                 ContentUnavailableView(
-                    "No terminal tab",
+                    L10n.string("No terminal tab"),
                     systemImage: "terminal",
-                    description: Text("Create a tab to start a real SSH shell for the active host.")
+                    description: Text(L10n.string("Create a tab to start a real SSH shell for the active host."))
                 )
             }
         }

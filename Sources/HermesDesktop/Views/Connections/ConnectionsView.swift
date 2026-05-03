@@ -18,7 +18,7 @@ struct ConnectionsView: View {
                     Button {
                         presentEditor(for: ConnectionProfile(), isEditing: false)
                     } label: {
-                        Label("Add Host", systemImage: "plus")
+                        Label(L10n.string("Add Host"), systemImage: "plus")
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -27,15 +27,15 @@ struct ConnectionsView: View {
                     HermesSurfacePanel {
                         VStack(alignment: .leading, spacing: 18) {
                             ContentUnavailableView(
-                                "No hosts yet",
+                                L10n.string("No hosts yet"),
                                 systemImage: "network.slash",
-                                description: Text("Create your first SSH profile to connect Hermes Desktop to a Raspberry Pi, another Mac, a VPS, or this Mac via localhost.")
+                                description: Text(L10n.string("Create your first SSH profile to connect Hermes Desktop to a Raspberry Pi, another Mac, a VPS, or this Mac via localhost."))
                             )
 
                             Button {
                                 presentEditor(for: ConnectionProfile(), isEditing: false)
                             } label: {
-                                Label("Add First Host", systemImage: "plus")
+                                Label(L10n.string("Add First Host"), systemImage: "plus")
                             }
                             .buttonStyle(.borderedProminent)
                         }
@@ -111,11 +111,11 @@ struct ConnectionsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HermesInsetSurface {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Recommended")
+                        Text(L10n.string("Recommended"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
-                        Text("Use an SSH alias whenever possible. It keeps the system SSH config as the source of truth and makes profiles easier to move between machines.")
+                        Text(L10n.string("Use an SSH alias whenever possible. It keeps the system SSH config as the source of truth and makes profiles easier to move between machines."))
                             .font(.subheadline)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -123,15 +123,15 @@ struct ConnectionsView: View {
 
                 HermesInsetSurface {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Authentication")
+                        Text(L10n.string("Authentication"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
-                        Text("Profiles work best when SSH already works from this Mac without prompts. Password login may still exist on the host, but the app expects a non-interactive SSH path such as keys or ssh-agent.")
+                        Text(L10n.string("Profiles work best when SSH already works from this Mac without prompts. Password login may still exist on the host, but the app expects a non-interactive SSH path such as keys or ssh-agent."))
                             .font(.subheadline)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("The Mac and Hermes host do not need to share the same Wi-Fi. What matters is that normal ssh from this Mac can reach the host over LAN, public IP, VPN, or Tailscale.")
+                        Text(L10n.string("The Mac and Hermes host do not need to share the same Wi-Fi. What matters is that normal ssh from this Mac can reach the host over LAN, public IP, VPN, or Tailscale."))
                             .font(.subheadline)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -255,20 +255,20 @@ private struct ConnectionCard: View {
 
     private var primaryActions: some View {
         HStack(spacing: 10) {
-            Button("Use Host", action: onConnect)
+            Button(L10n.string("Use Host"), action: onConnect)
                 .buttonStyle(.borderedProminent)
                 .disabled(isActive)
 
-            Button("Test", action: onTest)
+            Button(L10n.string("Test"), action: onTest)
                 .buttonStyle(.bordered)
 
-            Button("Edit", action: onEdit)
+            Button(L10n.string("Edit"), action: onEdit)
                 .buttonStyle(.bordered)
         }
     }
 
     private var destructiveAction: some View {
-        Button("Remove", role: .destructive, action: onDelete)
+        Button(L10n.string("Remove"), role: .destructive, action: onDelete)
             .buttonStyle(.borderless)
     }
 

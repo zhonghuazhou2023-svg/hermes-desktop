@@ -124,13 +124,13 @@ struct SessionDetailView: View {
 
             composerDock
         }
-        .alert("Delete this session?", isPresented: $showDeleteConfirmation, presenting: session) { session in
-            Button("Delete", role: .destructive) {
+        .alert(L10n.string("Delete this session?"), isPresented: $showDeleteConfirmation, presenting: session) { session in
+            Button(L10n.string("Delete"), role: .destructive) {
                 Task {
                     await onDeleteSession(session)
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.string("Cancel"), role: .cancel) {}
         } message: { session in
             Text(L10n.string(
                 "“%@” will be removed from Hermes Desktop and deleted on the remote Hermes host as well. This action cannot be undone.",
@@ -166,9 +166,9 @@ struct SessionDetailView: View {
         } else {
             HermesSurfacePanel {
                 ContentUnavailableView(
-                    "Start or select a session",
+                    L10n.string("Start or select a session"),
                     systemImage: "bubble.left.and.bubble.right",
-                    description: Text("Write below to begin a new Hermes conversation, or choose an existing session from the list.")
+                    description: Text(L10n.string("Write below to begin a new Hermes conversation, or choose an existing session from the list."))
                 )
                 .frame(maxWidth: .infinity, minHeight: 320)
             }
@@ -182,9 +182,9 @@ struct SessionDetailView: View {
         if messages.isEmpty && matchingPendingTurn == nil {
             HermesSurfacePanel {
                 ContentUnavailableView(
-                    "No transcript entries",
+                    L10n.string("No transcript entries"),
                     systemImage: "text.bubble",
-                    description: Text("This session has no readable message rows yet.")
+                    description: Text(L10n.string("This session has no readable message rows yet."))
                 )
                 .frame(maxWidth: .infinity, minHeight: 280)
             }
@@ -650,7 +650,7 @@ private struct PendingSessionTurnView: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
-                            Text(L10n.string("Hermes is working"))
+                            Text(L10n.string("Agent is working"))
                                 .font(.subheadline.weight(.semibold))
 
                             if turn.autoApproveCommands {
@@ -932,7 +932,7 @@ private struct ToolOutputView: View {
 
     private var visibleContent: String? {
         guard isShowingFullOutput else {
-            return summary?.detailPreview
+            return SessionToolMessageSummary.detailPreview(from: content)
         }
 
         return content
@@ -1027,7 +1027,7 @@ private struct MetadataItemView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            Text(item.value)
+            Text(item.displayValue)
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
         }

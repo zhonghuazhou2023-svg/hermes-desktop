@@ -22,21 +22,36 @@ struct HermesPageHeader<Accessory: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.string(title))
-                    .font(.largeTitle)
-                    .fontWeight(.semibold)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 20) {
+                titleBlock
 
-                Text(L10n.string(subtitle))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 16)
+
+                accessory
             }
 
-            Spacer(minLength: 16)
+            VStack(alignment: .leading, spacing: 12) {
+                titleBlock
+                accessory
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
 
-            accessory
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.string(title))
+                .font(.largeTitle)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            Text(L10n.string(subtitle))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -434,9 +449,11 @@ struct HermesPersistentHSplitView<Primary: View, Detail: View>: NSViewRepresenta
 
         let primaryHost = NSHostingView(rootView: primary)
         primaryHost.translatesAutoresizingMaskIntoConstraints = false
+        primaryHost.clipsToBounds = true
 
         let detailHost = NSHostingView(rootView: detail)
         detailHost.translatesAutoresizingMaskIntoConstraints = false
+        detailHost.clipsToBounds = true
 
         splitView.addArrangedSubview(primaryHost)
         splitView.addArrangedSubview(detailHost)
@@ -519,7 +536,7 @@ struct HermesPersistentHSplitView<Primary: View, Detail: View>: NSViewRepresenta
             constrainMinCoordinate proposedMinimumPosition: CGFloat,
             ofSubviewAt dividerIndex: Int
         ) -> CGFloat {
-            layout?.wrappedValue.minPrimaryWidth ?? proposedMinimumPosition
+            effectivePrimaryMinimum(in: splitView) ?? proposedMinimumPosition
         }
 
         func splitView(
@@ -527,14 +544,11 @@ struct HermesPersistentHSplitView<Primary: View, Detail: View>: NSViewRepresenta
             constrainMaxCoordinate proposedMaximumPosition: CGFloat,
             ofSubviewAt dividerIndex: Int
         ) -> CGFloat {
-            guard let layout else { return proposedMaximumPosition }
-            return max(
-                layout.wrappedValue.minPrimaryWidth,
-                min(
-                    layout.wrappedValue.maxPrimaryWidth,
-                    splitView.bounds.width - detailMinWidth - splitView.dividerThickness
-                )
-            )
+            guard let upperBound = primaryUpperBound(in: splitView) else {
+                return proposedMaximumPosition
+            }
+            let lowerBound = effectivePrimaryMinimum(in: splitView) ?? 0
+            return max(lowerBound, upperBound)
         }
 
         func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
@@ -542,17 +556,28 @@ struct HermesPersistentHSplitView<Primary: View, Detail: View>: NSViewRepresenta
         }
 
         private func constrainedPrimaryWidth(_ width: CGFloat, in splitView: NSSplitView) -> CGFloat {
-            guard let layout else { return width }
+            guard let lowerBound = effectivePrimaryMinimum(in: splitView),
+                  let upperBound = primaryUpperBound(in: splitView) else {
+                return width
+            }
 
-            let maxWidth = max(
-                layout.wrappedValue.minPrimaryWidth,
-                min(
-                    layout.wrappedValue.maxPrimaryWidth,
-                    splitView.bounds.width - detailMinWidth - splitView.dividerThickness
-                )
-            )
+            let maxWidth = max(lowerBound, upperBound)
+            return min(max(width, lowerBound), maxWidth)
+        }
 
-            return min(max(width, layout.wrappedValue.minPrimaryWidth), maxWidth)
+        private func effectivePrimaryMinimum(in splitView: NSSplitView) -> CGFloat? {
+            guard let layout else { return nil }
+            guard let upperBound = primaryUpperBound(in: splitView) else {
+                return layout.wrappedValue.minPrimaryWidth
+            }
+
+            return min(layout.wrappedValue.minPrimaryWidth, upperBound)
+        }
+
+        private func primaryUpperBound(in splitView: NSSplitView) -> CGFloat? {
+            guard let layout else { return nil }
+            let availableBeforeDetail = splitView.bounds.width - detailMinWidth - splitView.dividerThickness
+            return max(0, min(layout.wrappedValue.maxPrimaryWidth, availableBeforeDetail))
         }
     }
 }

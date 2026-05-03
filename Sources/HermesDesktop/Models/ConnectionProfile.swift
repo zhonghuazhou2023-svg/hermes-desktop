@@ -108,7 +108,7 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
     func remoteShellBootstrapCommand(startupCommandLine: String? = nil) -> String {
         let shellHomeExpression: String
         if let trimmedHermesProfile {
-            let escapedProfile = trimmedHermesProfile.replacingOccurrences(of: "\"", with: "\\\"")
+            let escapedProfile = trimmedHermesProfile.escapedForDoubleQuotedShellArgument
             shellHomeExpression = "$HOME/.hermes/profiles/\(escapedProfile)"
         } else {
             shellHomeExpression = "$HOME/.hermes"
@@ -165,8 +165,44 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
     }
 
     var isValid: Bool {
-        !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !effectiveTarget.isEmpty
+        validationError == nil
+    }
+
+    var validationError: String? {
+        if label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Name is required."
+        }
+
+        return sshValidationError
+    }
+
+    var sshValidationError: String? {
+        guard !effectiveTarget.isEmpty else {
+            return "Add an SSH alias or host."
+        }
+
+        if let error = validateSSHArgument(trimmedAlias, fieldName: "SSH alias") {
+            return error
+        }
+
+        if let error = validateSSHArgument(trimmedHost, fieldName: "Host") {
+            return error
+        }
+
+        if let error = validateSSHArgument(trimmedUser, fieldName: "SSH user") {
+            return error
+        }
+
+        if let trimmedHermesProfile {
+            if trimmedHermesProfile.contains("/") || trimmedHermesProfile == "." || trimmedHermesProfile == ".." {
+                return "Hermes profile must be a profile name, not a path."
+            }
+            if trimmedHermesProfile.containsControlCharacter {
+                return "Hermes profile contains unsupported control characters."
+            }
+        }
+
+        return nil
     }
 
     func updated() -> ConnectionProfile {
@@ -191,4 +227,19 @@ private extension String {
             .replacingOccurrences(of: "$", with: "\\$")
             .replacingOccurrences(of: "`", with: "\\`")
     }
+
+    var containsControlCharacter: Bool {
+        unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
+    }
+}
+
+private func validateSSHArgument(_ value: String?, fieldName: String) -> String? {
+    guard let value else { return nil }
+    if value.hasPrefix("-") {
+        return "\(fieldName) cannot start with a dash."
+    }
+    if value.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0) }) {
+        return "\(fieldName) cannot contain whitespace or control characters."
+    }
+    return nil
 }

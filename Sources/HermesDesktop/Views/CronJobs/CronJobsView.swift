@@ -46,12 +46,12 @@ struct CronJobsView: View {
                 await appState.loadCronJobs()
             }
         }
-        .alert("Remove cron job?", isPresented: $showDeleteConfirmation) {
-            Button("Remove", role: .destructive) {
+        .alert(L10n.string("Remove cron job?"), isPresented: $showDeleteConfirmation) {
+            Button(L10n.string("Remove"), role: .destructive) {
                 guard let jobToDelete else { return }
                 Task { await appState.deleteCronJob(jobToDelete) }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.string("Cancel"), role: .cancel) {}
         } message: {
             if let jobToDelete {
                 Text(L10n.string(
@@ -75,7 +75,7 @@ struct CronJobsView: View {
             Button {
                 startCreating()
             } label: {
-                Label("New", systemImage: "plus")
+                Label(L10n.string("New"), systemImage: "plus")
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.borderedProminent)
@@ -134,9 +134,9 @@ struct CronJobsView: View {
 
                     if filteredJobs.isEmpty {
                         ContentUnavailableView(
-                            "No matching cron jobs",
+                            L10n.string("No matching cron jobs"),
                             systemImage: "magnifyingglass",
-                            description: Text("Try searching by title, schedule, skill, model, delivery target or prompt text.")
+                            description: Text(L10n.string("Try searching by title, schedule, skill, model, delivery target or prompt text."))
                         )
                         .frame(maxWidth: .infinity, minHeight: 300)
                     } else {
@@ -450,13 +450,13 @@ private struct CronJobDetailView: View {
                 } else {
                     HermesSurfacePanel {
                         ContentUnavailableView(
-                            "Select a cron job",
+                            L10n.string("Select a cron job"),
                             systemImage: "calendar.badge.clock",
-                            description: Text("Choose a Hermes cron job from the active host to inspect it, or create a new one.")
+                            description: Text(L10n.string("Choose a Hermes cron job from the active host to inspect it, or create a new one."))
                         )
                         .frame(maxWidth: .infinity, minHeight: 320)
 
-                        Button("Create Cron Job", action: onCreate)
+                        Button(L10n.string("Create Cron Job"), action: onCreate)
                             .buttonStyle(.borderedProminent)
                     }
                 }
@@ -494,19 +494,19 @@ private struct CronJobDetailView: View {
 
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) {
-                        Button("Edit", action: onEdit)
+                        Button(L10n.string("Edit"), action: onEdit)
                             .buttonStyle(.borderedProminent)
                             .disabled(operationInFlight)
 
-                        Button("Run Now", action: onRunNow)
+                        Button(L10n.string("Run Now"), action: onRunNow)
                             .buttonStyle(.bordered)
                             .disabled(operationInFlight)
 
-                        Button(job.isPaused ? "Resume" : "Pause", action: onTogglePause)
+                        Button(L10n.string(job.isPaused ? "Resume" : "Pause"), action: onTogglePause)
                             .buttonStyle(.bordered)
                             .disabled(operationInFlight)
 
-                        Button("Remove", role: .destructive, action: onDelete)
+                        Button(L10n.string("Remove"), role: .destructive, action: onDelete)
                             .buttonStyle(.bordered)
                             .disabled(operationInFlight)
 
@@ -517,21 +517,21 @@ private struct CronJobDetailView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Button("Edit", action: onEdit)
+                        Button(L10n.string("Edit"), action: onEdit)
                             .buttonStyle(.borderedProminent)
                             .disabled(operationInFlight)
 
                         HStack(spacing: 8) {
-                            Button("Run Now", action: onRunNow)
+                            Button(L10n.string("Run Now"), action: onRunNow)
                                 .buttonStyle(.bordered)
                                 .disabled(operationInFlight)
 
-                            Button(job.isPaused ? "Resume" : "Pause", action: onTogglePause)
+                            Button(L10n.string(job.isPaused ? "Resume" : "Pause"), action: onTogglePause)
                                 .buttonStyle(.bordered)
                                 .disabled(operationInFlight)
                         }
 
-                        Button("Remove", role: .destructive, action: onDelete)
+                        Button(L10n.string("Remove"), role: .destructive, action: onDelete)
                             .buttonStyle(.bordered)
                             .disabled(operationInFlight)
                     }

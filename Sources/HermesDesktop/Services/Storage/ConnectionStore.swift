@@ -20,10 +20,18 @@ final class ConnectionStore: ObservableObject {
             savePreferences()
         }
     }
+    @Published private(set) var pinnedSessions: [PinnedSession] = [] {
+        didSet {
+            savePreferences()
+        }
+    }
 
     private let paths: AppPaths
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let privateFileAttributes: [FileAttributeKey: Any] = [
+        .posixPermissions: NSNumber(value: Int16(0o600))
+    ]
 
     init(paths: AppPaths) {
         self.paths = paths
@@ -93,6 +101,53 @@ final class ConnectionStore: ObservableObject {
         workspaceFileBookmarks.removeAll { $0.id == id }
     }
 
+    func pinnedSessions(for workspaceScopeFingerprint: String) -> [PinnedSession] {
+        pinnedSessions
+            .filter { $0.workspaceScopeFingerprint == workspaceScopeFingerprint }
+            .sorted { lhs, rhs in
+                lhs.createdAt > rhs.createdAt
+            }
+    }
+
+    func isSessionPinned(id: String, workspaceScopeFingerprint: String) -> Bool {
+        pinnedSessions.contains {
+            $0.workspaceScopeFingerprint == workspaceScopeFingerprint &&
+                $0.id == id
+        }
+    }
+
+    func upsertPinnedSession(_ session: SessionSummary, workspaceScopeFingerprint: String) {
+        if let index = pinnedSessions.firstIndex(where: {
+            $0.workspaceScopeFingerprint == workspaceScopeFingerprint &&
+                $0.id == session.id
+        }) {
+            var pinnedSession = pinnedSessions[index]
+            pinnedSession.title = session.title
+            pinnedSession.model = session.model
+            pinnedSession.startedAt = session.startedAt
+            pinnedSession.lastActive = session.lastActive
+            pinnedSession.messageCount = session.messageCount
+            pinnedSession.preview = session.preview
+            pinnedSession.updatedAt = Date()
+            pinnedSessions[index] = pinnedSession
+            return
+        }
+
+        pinnedSessions.append(
+            PinnedSession(
+                session: session,
+                workspaceScopeFingerprint: workspaceScopeFingerprint
+            )
+        )
+    }
+
+    func removePinnedSession(id: String, workspaceScopeFingerprint: String) {
+        pinnedSessions.removeAll {
+            $0.workspaceScopeFingerprint == workspaceScopeFingerprint &&
+                $0.id == id
+        }
+    }
+
     private func load() {
         loadConnections()
         loadPreferences()
@@ -102,6 +157,7 @@ final class ConnectionStore: ObservableObject {
         do {
             let data = try encoder.encode(connections)
             try data.write(to: paths.connectionsURL, options: [.atomic])
+            try fileManagerSetPrivatePermissions(at: paths.connectionsURL)
         } catch {
             reportPersistenceError(
                 "Unable to save saved hosts to \(paths.connectionsURL.lastPathComponent): \(error.localizedDescription)"
@@ -114,12 +170,14 @@ final class ConnectionStore: ObservableObject {
         let preferences = AppPreferences(
             lastConnectionID: lastConnectionID,
             terminalTheme: terminalTheme,
-            workspaceFileBookmarks: workspaceFileBookmarks
+            workspaceFileBookmarks: workspaceFileBookmarks,
+            pinnedSessions: pinnedSessions
         )
 
         do {
             let data = try encoder.encode(preferences)
             try data.write(to: paths.preferencesURL, options: [.atomic])
+            try fileManagerSetPrivatePermissions(at: paths.preferencesURL)
         } catch {
             reportPersistenceError(
                 "Unable to save app preferences to \(paths.preferencesURL.lastPathComponent): \(error.localizedDescription)"
@@ -131,6 +189,7 @@ final class ConnectionStore: ObservableObject {
         do {
             let data = try Data(contentsOf: paths.connectionsURL)
             connections = try decoder.decode([ConnectionProfile].self, from: data)
+            try? fileManagerSetPrivatePermissions(at: paths.connectionsURL)
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             connections = []
         } catch {
@@ -148,14 +207,18 @@ final class ConnectionStore: ObservableObject {
             lastConnectionID = decoded.lastConnectionID
             terminalTheme = decoded.terminalTheme ?? .defaultValue
             workspaceFileBookmarks = decoded.workspaceFileBookmarks ?? []
+            pinnedSessions = decoded.pinnedSessions ?? []
+            try? fileManagerSetPrivatePermissions(at: paths.preferencesURL)
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             lastConnectionID = nil
             terminalTheme = .defaultValue
             workspaceFileBookmarks = []
+            pinnedSessions = []
         } catch {
             lastConnectionID = nil
             terminalTheme = .defaultValue
             workspaceFileBookmarks = []
+            pinnedSessions = []
             reportPersistenceError(
                 "Unable to load app preferences from \(paths.preferencesURL.lastPathComponent): \(error.localizedDescription)"
             )
@@ -165,12 +228,17 @@ final class ConnectionStore: ObservableObject {
     private func reportPersistenceError(_ message: String) {
         persistenceError = message
     }
+
+    private func fileManagerSetPrivatePermissions(at url: URL) throws {
+        try paths.fileManager.setAttributes(privateFileAttributes, ofItemAtPath: url.path)
+    }
 }
 
 private struct AppPreferences: Codable {
     var lastConnectionID: UUID?
     var terminalTheme: TerminalThemePreference?
     var workspaceFileBookmarks: [WorkspaceFileBookmark]?
+    var pinnedSessions: [PinnedSession]?
 }
 
 private extension String {

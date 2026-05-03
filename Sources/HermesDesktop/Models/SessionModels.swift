@@ -32,6 +32,49 @@ struct SessionSummary: Codable, Identifiable, Hashable, Sendable, TitleIdentifia
     }
 }
 
+struct PinnedSession: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let workspaceScopeFingerprint: String
+    var title: String?
+    var model: String?
+    var startedAt: SessionTimestamp?
+    var lastActive: SessionTimestamp?
+    var messageCount: Int?
+    var preview: String?
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        session: SessionSummary,
+        workspaceScopeFingerprint: String,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = session.id
+        self.workspaceScopeFingerprint = workspaceScopeFingerprint
+        self.title = session.title
+        self.model = session.model
+        self.startedAt = session.startedAt
+        self.lastActive = session.lastActive
+        self.messageCount = session.messageCount
+        self.preview = session.preview
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    var summary: SessionSummary {
+        SessionSummary(
+            id: id,
+            title: title,
+            model: model,
+            startedAt: startedAt,
+            lastActive: lastActive,
+            messageCount: messageCount,
+            preview: preview
+        )
+    }
+}
+
 struct SessionDetailResponse: Codable, Sendable {
     let ok: Bool
     let items: [SessionMessage]
@@ -89,7 +132,7 @@ struct SessionMessageDisplay: Identifiable, Hashable, Sendable {
         let displayMetadata = message.displayMetadata ?? [:]
         metadataItems = displayMetadata.keys.sorted().compactMap { key in
             guard let value = displayMetadata[key] else { return nil }
-            return SessionMetadataDisplayItem(key: key, value: value.displayString)
+            return SessionMetadataDisplayItem(key: key, value: value)
         }
         toolSummary = message.role.isToolRole
             ? SessionToolMessageSummary(content: message.content)
@@ -103,10 +146,14 @@ struct SessionMessageDisplay: Identifiable, Hashable, Sendable {
 
 struct SessionMetadataDisplayItem: Identifiable, Hashable, Sendable {
     let key: String
-    let value: String
+    let value: JSONValue
 
     var id: String {
         key
+    }
+
+    var displayValue: String {
+        value.displayString
     }
 }
 
@@ -161,23 +208,19 @@ struct SessionToolMessageSummary: Hashable, Sendable {
     let statusText: String?
     let statusKind: SessionToolStatusKind
     let sizeText: String?
-    let detailPreview: String?
     let isDetailPreviewTruncated: Bool
 
     private static let jsonParseByteLimit = 256 * 1024
     private static let collapsedPreviewCharacterLimit = 220
-    private static let detailPreviewCharacterLimit = 5_000
+    static let detailPreviewCharacterLimit = 5_000
 
     init(content: String?) {
         let byteCount = content?.utf8.count ?? 0
         sizeText = byteCount > 0 ? Self.formattedByteCount(byteCount) : nil
 
         if let content, !content.isEmpty {
-            let detail = Self.detailPreview(from: content)
-            detailPreview = detail.text
-            isDetailPreviewTruncated = detail.isTruncated
+            isDetailPreviewTruncated = Self.isDetailPreviewTruncated(content)
         } else {
-            detailPreview = nil
             isDetailPreviewTruncated = false
         }
 
@@ -317,10 +360,25 @@ struct SessionToolMessageSummary: Hashable, Sendable {
         return String(normalized.prefix(collapsedPreviewCharacterLimit - 3)) + "..."
     }
 
-    private static func detailPreview(from content: String) -> (text: String, isTruncated: Bool) {
-        let prefix = content.prefix(detailPreviewCharacterLimit)
-        let isTruncated = prefix.endIndex < content.endIndex
-        return (String(prefix), isTruncated)
+    static func detailPreview(from content: String?) -> String? {
+        guard let content, !content.isEmpty else { return nil }
+        let endIndex = content.index(
+            content.startIndex,
+            offsetBy: detailPreviewCharacterLimit,
+            limitedBy: content.endIndex
+        ) ?? content.endIndex
+        return String(content[..<endIndex])
+    }
+
+    private static func isDetailPreviewTruncated(_ content: String) -> Bool {
+        guard let limitIndex = content.index(
+            content.startIndex,
+            offsetBy: detailPreviewCharacterLimit,
+            limitedBy: content.endIndex
+        ) else {
+            return false
+        }
+        return limitIndex < content.endIndex
     }
 
     private static func formattedByteCount(_ byteCount: Int) -> String {
@@ -371,7 +429,7 @@ enum SessionMessageRole: Codable, Hashable, Sendable {
     var displayTitle: String {
         switch self {
         case .assistant:
-            return "Assistant"
+            return "Agent"
         case .user:
             return "User"
         case .system:

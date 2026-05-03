@@ -72,6 +72,60 @@ struct ConnectionProfileTests {
     }
 
     @Test
+    func bootstrapCommandEscapesShellExpansionInProfileName() {
+        let profile = ConnectionProfile(
+            label: "Shell Expansion",
+            sshHost: "example.com",
+            sshUser: "alice",
+            hermesProfile: "research$HOME`whoami`"
+        ).updated()
+
+        #expect(
+            profile.remoteShellBootstrapCommand ==
+                "export HERMES_HOME=\"$HOME/.hermes/profiles/research\\$HOME\\`whoami\\`\"; exec \"${SHELL:-/bin/zsh}\" -l"
+        )
+    }
+
+    @Test
+    func rejectsUnsafeSSHArguments() {
+        let dashedHost = ConnectionProfile(
+            label: "Unsafe",
+            sshHost: "-oProxyCommand=sh"
+        ).updated()
+
+        let spacedUser = ConnectionProfile(
+            label: "Unsafe",
+            sshHost: "example.com",
+            sshUser: "alice bob"
+        ).updated()
+
+        #expect(dashedHost.validationError == "Host cannot start with a dash.")
+        #expect(spacedUser.validationError == "SSH user cannot contain whitespace or control characters.")
+    }
+
+    @Test
+    func sshValidationDoesNotRequireDisplayName() {
+        let profile = ConnectionProfile(
+            label: "",
+            sshHost: "example.com"
+        ).updated()
+
+        #expect(profile.validationError == "Name is required.")
+        #expect(profile.sshValidationError == nil)
+    }
+
+    @Test
+    func rejectsHermesProfilePaths() {
+        let profile = ConnectionProfile(
+            label: "Unsafe",
+            sshHost: "example.com",
+            hermesProfile: "../prod"
+        ).updated()
+
+        #expect(profile.validationError == "Hermes profile must be a profile name, not a path.")
+    }
+
+    @Test
     func startupCommandRunsThroughLoginShellWithoutInputInjection() {
         let profile = ConnectionProfile(
             label: "Research Host",

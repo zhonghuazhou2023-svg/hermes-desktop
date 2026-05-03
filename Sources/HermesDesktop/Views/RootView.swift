@@ -12,12 +12,12 @@ struct RootView: View {
         HSplitView {
             List(selection: sectionSelection) {
                 if let activeConnection = appState.activeConnection {
-                    Section("Workspace") {
+                    Section(L10n.string("Workspace")) {
                         WorkspaceSidebarCard(connection: activeConnection)
                     }
                 }
 
-                Section("Sections") {
+                Section(L10n.string("Sections")) {
                     ForEach(availableSections) { section in
                         Label(section.title, systemImage: section.systemImage)
                             .tag(section)
@@ -30,6 +30,7 @@ struct RootView: View {
             detailView
                 .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
+                .clipped()
         }
         .overlay(alignment: .bottom) {
             if let statusMessage = appState.statusMessage {
@@ -48,11 +49,11 @@ struct RootView: View {
                 dismissButton: .default(Text(L10n.string("OK")))
             )
         }
-        .alert("Discard unsaved changes?", isPresented: $appState.showDiscardChangesAlert) {
-            Button("Discard", role: .destructive) {
+        .alert(L10n.string("Discard unsaved changes?"), isPresented: $appState.showDiscardChangesAlert) {
+            Button(L10n.string("Discard"), role: .destructive) {
                 appState.discardChangesAndContinue()
             }
-            Button("Stay", role: .cancel) {
+            Button(L10n.string("Stay"), role: .cancel) {
                 appState.stayOnCurrentSection()
             }
         } message: {

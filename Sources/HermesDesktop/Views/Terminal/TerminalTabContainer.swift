@@ -38,7 +38,7 @@ struct TerminalTabContainer: View {
                         .font(.caption)
                         .foregroundStyle(exitCode == 0 ? Color.secondary : Color.orange)
 
-                    Button("Reconnect") {
+                    Button(L10n.string("Reconnect")) {
                         session.requestReconnect()
                     }
                     .buttonStyle(.bordered)

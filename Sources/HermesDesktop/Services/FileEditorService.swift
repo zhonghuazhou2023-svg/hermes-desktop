@@ -20,8 +20,21 @@ final class FileEditorService: @unchecked Sendable {
             import json
             import pathlib
 
+            def editable_file_target(path):
+                if path.is_symlink():
+                    try:
+                        resolved = path.resolve(strict=True)
+                    except FileNotFoundError:
+                        fail(f"{payload['path']} is a dangling symlink.")
+                    if not resolved.is_file():
+                        fail(f"{payload['path']} points to a non-file target.")
+                    return resolved
+
+                return path
+
             try:
-                target = expand_remote_path(payload["path"]) or pathlib.Path(payload["path"])
+                requested = expand_remote_path(payload["path"]) or pathlib.Path(payload["path"])
+                target = editable_file_target(requested)
                 if not target.exists():
                     fail(f"{payload['path']} does not exist on the active host.")
                 if not target.is_file():
@@ -130,12 +143,12 @@ final class FileEditorService: @unchecked Sendable {
                         is_file = False
 
                     is_symlink = item.is_symlink()
-                    if is_directory:
+                    if is_symlink:
+                        kind = "symlink"
+                    elif is_directory:
                         kind = "directory"
                     elif is_file:
                         kind = "file"
-                    elif is_symlink:
-                        kind = "symlink"
                     else:
                         kind = "other"
 
@@ -203,8 +216,21 @@ final class FileEditorService: @unchecked Sendable {
             content_bytes = payload["content"].encode("utf-8")
             expected_hash = payload.get("expected_content_hash")
 
+            def editable_file_target(path):
+                if path.is_symlink():
+                    try:
+                        resolved = path.resolve(strict=True)
+                    except FileNotFoundError:
+                        fail(f"{payload['path']} is a dangling symlink.")
+                    if not resolved.is_file():
+                        fail(f"{payload['path']} points to a non-file target.")
+                    return resolved
+
+                return path
+
             try:
-                target = expand_remote_path(payload["path"]) or pathlib.Path(payload["path"])
+                requested = expand_remote_path(payload["path"]) or pathlib.Path(payload["path"])
+                target = editable_file_target(requested)
 
                 if expected_hash is not None:
                     if not target.exists():

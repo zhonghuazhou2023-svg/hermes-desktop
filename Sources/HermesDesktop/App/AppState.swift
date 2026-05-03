@@ -83,6 +83,7 @@ final class AppState: ObservableObject {
     private let sessionPageSize = 50
     private var sessionOffset = 0
     private var sessionMessageSignature = SessionMessageSignature(messages: [])
+    private var connectionTestRequestID: UUID?
     private var statusTask: Task<Void, Never>?
     private var sessionTranscriptPollingTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
@@ -158,6 +159,26 @@ final class AppState: ObservableObject {
 
     var workspaceFileReferences: [WorkspaceFileReference] {
         canonicalWorkspaceFileReferences + bookmarkedWorkspaceFileReferences
+    }
+
+    var pinnedSessionSummaries: [SessionSummary] {
+        guard let activeConnection else { return [] }
+
+        return connectionStore
+            .pinnedSessions(for: activeConnection.workspaceScopeFingerprint)
+            .map { pinnedSession in
+                sessions.first(where: { $0.id == pinnedSession.id }) ?? pinnedSession.summary
+            }
+    }
+
+    var unpinnedSessions: [SessionSummary] {
+        guard let activeConnection else { return sessions }
+        let pinnedIDs = Set(
+            connectionStore
+                .pinnedSessions(for: activeConnection.workspaceScopeFingerprint)
+                .map(\.id)
+        )
+        return sessions.filter { !pinnedIDs.contains($0.id) }
     }
 
     var selectedWorkspaceFileReference: WorkspaceFileReference? {
@@ -360,6 +381,9 @@ final class AppState: ObservableObject {
     }
 
     func testConnection(_ profile: ConnectionProfile) {
+        let requestID = UUID()
+        connectionTestRequestID = requestID
+
         Task {
             do {
                 isBusy = true
@@ -386,21 +410,23 @@ final class AppState: ObservableObject {
                     responseType: ConnectionTestResponse.self
                 )
 
+                guard connectionTestRequestID == requestID else { return }
                 isBusy = false
                 let home = response.remoteHome.trimmingCharacters(in: .whitespacesAndNewlines)
                 setStatusMessage(L10n.string("SSH and python3 OK for %@", profile.label))
                 let messageLines = [
-                    "SSH and python3 are available for this Hermes host.",
-                    home.isEmpty ? nil : "Remote HOME: \(home)"
+                    L10n.string("SSH and python3 are available for this Hermes host."),
+                    home.isEmpty ? nil : L10n.string("Remote HOME: %@", home)
                 ].compactMap { $0 }
                 activeAlert = AppAlert(
-                    title: "Connection OK",
+                    title: L10n.string("Connection OK"),
                     message: messageLines.joined(separator: "\n")
                 )
             } catch {
+                guard connectionTestRequestID == requestID else { return }
                 isBusy = false
                 activeAlert = AppAlert(
-                    title: "Connection failed",
+                    title: L10n.string("Connection failed"),
                     message: error.localizedDescription
                 )
             }
@@ -417,12 +443,15 @@ final class AppState: ObservableObject {
         do {
             isBusy = true
             overviewError = nil
-            overview = try await remoteHermesService.discover(connection: profile)
+            let discovery = try await remoteHermesService.discover(connection: profile)
+            guard isActiveWorkspace(profile) else { return }
+            overview = discovery
             isBusy = false
             if manual {
                 isRefreshingOverview = false
             }
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isBusy = false
             if manual {
                 isRefreshingOverview = false
@@ -501,6 +530,7 @@ final class AppState: ObservableObject {
                 remotePath: reference.remotePath,
                 connection: profile
             )
+            guard isActiveWorkspace(profile) else { return }
             document.content = snapshot.content
             document.originalContent = snapshot.content
             document.remoteContentHash = snapshot.contentHash
@@ -510,6 +540,7 @@ final class AppState: ObservableObject {
             document.hasLoaded = true
             setDocument(document)
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             document.isLoading = false
             document.errorMessage = error.localizedDescription
             setDocument(document)
@@ -542,6 +573,7 @@ final class AppState: ObservableObject {
                 expectedContentHash: document.remoteContentHash,
                 connection: profile
             )
+            guard isActiveWorkspace(profile) else { return }
             document.originalContent = document.content
             document.remoteContentHash = saveResult.contentHash
             document.lastSavedAt = Date()
@@ -550,6 +582,7 @@ final class AppState: ObservableObject {
             setDocument(document)
             setStatusMessage(L10n.string("%@ saved", reference.title))
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             document.isLoading = false
             document.errorMessage = error.localizedDescription
             setDocument(document)
@@ -606,6 +639,45 @@ final class AppState: ObservableObject {
         setStatusMessage(L10n.string("Bookmark removed"))
     }
 
+    func isSessionPinned(_ sessionID: String) -> Bool {
+        guard let activeConnection else { return false }
+        return connectionStore.isSessionPinned(
+            id: sessionID,
+            workspaceScopeFingerprint: activeConnection.workspaceScopeFingerprint
+        )
+    }
+
+    func pinSession(_ session: SessionSummary) {
+        guard let activeConnection else { return }
+        connectionStore.upsertPinnedSession(
+            session,
+            workspaceScopeFingerprint: activeConnection.workspaceScopeFingerprint
+        )
+        setStatusMessage(L10n.string("%@ pinned", session.resolvedTitle))
+    }
+
+    func unpinSession(_ session: SessionSummary) {
+        guard let activeConnection else { return }
+        connectionStore.removePinnedSession(
+            id: session.id,
+            workspaceScopeFingerprint: activeConnection.workspaceScopeFingerprint
+        )
+        setStatusMessage(L10n.string("%@ unpinned", session.resolvedTitle))
+    }
+
+    func toggleSessionPin(_ session: SessionSummary) {
+        if isSessionPinned(session.id) {
+            unpinSession(session)
+        } else {
+            pinSession(session)
+        }
+    }
+
+    func sessionSummary(for sessionID: String) -> SessionSummary? {
+        sessions.first(where: { $0.id == sessionID }) ??
+            pinnedSessionSummaries.first(where: { $0.id == sessionID })
+    }
+
     func browseWorkspaceDirectory(path: String? = nil) async {
         guard let profile = activeConnection else { return }
         let trimmedPath = path?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -615,13 +687,16 @@ final class AppState: ObservableObject {
         workspaceFileBrowserError = nil
 
         do {
-            workspaceFileBrowserListing = try await fileEditorService.listDirectory(
+            let listing = try await fileEditorService.listDirectory(
                 remotePath: browsePath,
                 hermesHome: overview?.hermesHome ?? profile.remoteHermesHomePath,
                 connection: profile
             )
+            guard isActiveWorkspace(profile) else { return }
+            workspaceFileBrowserListing = listing
             isLoadingWorkspaceFileBrowser = false
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isLoadingWorkspaceFileBrowser = false
             workspaceFileBrowserError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to browse remote files"))
@@ -649,6 +724,7 @@ final class AppState: ObservableObject {
                 limit: sessionPageSize,
                 query: normalizedQuery
             )
+            guard isActiveWorkspace(profile) else { return }
 
             if reset {
                 sessions = page.items
@@ -665,10 +741,13 @@ final class AppState: ObservableObject {
             if reset {
                 let preferredSessionID: String?
                 if let previousSelectedSessionID,
-                   sessions.contains(where: { $0.id == previousSelectedSessionID }) {
+                   sessions.contains(where: { $0.id == previousSelectedSessionID }) ||
+                    isSessionPinned(previousSelectedSessionID) {
                     preferredSessionID = previousSelectedSessionID
                 } else {
-                    preferredSessionID = sessions.first?.id
+                    preferredSessionID = normalizedQuery.isEmpty
+                        ? pinnedSessionSummaries.first?.id ?? sessions.first?.id
+                        : sessions.first?.id
                 }
 
                 if let preferredSessionID {
@@ -679,6 +758,7 @@ final class AppState: ObservableObject {
                 }
             }
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isLoadingSessions = false
             sessionsError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to load sessions"))
@@ -699,8 +779,10 @@ final class AppState: ObservableObject {
                 connection: profile,
                 sessionID: sessionID
             )
-            await setSessionMessages(messages)
+            guard isActiveWorkspace(profile), selectedSessionID == sessionID else { return }
+            await setSessionMessages(messages, for: profile, sessionID: sessionID)
         } catch {
+            guard isActiveWorkspace(profile), selectedSessionID == sessionID else { return }
             clearSessionMessages()
             sessionsError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to load session transcript"))
@@ -738,6 +820,7 @@ final class AppState: ObservableObject {
                 connection: profile,
                 autoApproveCommands: autoApproveCommands
             )
+            guard isActiveWorkspace(profile) else { return false }
 
             isSendingSessionMessage = false
             pendingSessionTurn = nil
@@ -746,6 +829,7 @@ final class AppState: ObservableObject {
             await loadSessions(reset: true, query: "")
             return true
         } catch {
+            guard isActiveWorkspace(profile) else { return false }
             isSendingSessionMessage = false
             pendingSessionTurn = nil
             sessionConversationError = error.localizedDescription
@@ -782,14 +866,19 @@ final class AppState: ObservableObject {
                 connection: profile,
                 autoApproveCommands: autoApproveCommands
             )
+            guard isActiveWorkspace(profile) else { return false }
 
             stopSessionTranscriptPolling()
+            if self.selectedSessionID == selectedSessionID {
+                await loadSessionDetail(sessionID: selectedSessionID)
+            }
             isSendingSessionMessage = false
             pendingSessionTurn = nil
             setStatusMessage(L10n.string("Hermes response saved on the host"))
             await loadSessions(reset: true, query: sessionSearchQuery)
             return true
         } catch {
+            guard isActiveWorkspace(profile) else { return false }
             stopSessionTranscriptPolling()
             isSendingSessionMessage = false
             pendingSessionTurn = nil
@@ -812,12 +901,14 @@ final class AppState: ObservableObject {
                 sessionID: session.id,
                 hintedSessionStore: overview?.sessionStore
             )
+            guard isActiveWorkspace(profile) else { return }
 
             await loadSessions(reset: true)
             await loadUsage(forceRefresh: true)
             isDeletingSession = false
             setStatusMessage(L10n.string("Session deleted locally and on the remote Hermes host"))
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isDeletingSession = false
             sessionsError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to delete session"))
@@ -841,6 +932,7 @@ final class AppState: ObservableObject {
                 connection: profile,
                 hintedSessionStore: overview?.sessionStore
             )
+            guard isActiveWorkspace(profile) else { return }
 
             let profileBreakdown: UsageProfileBreakdown?
             if let overview,
@@ -853,11 +945,13 @@ final class AppState: ObservableObject {
             } else {
                 profileBreakdown = nil
             }
+            guard isActiveWorkspace(profile) else { return }
 
             usageSummary = summary
             usageProfileBreakdown = profileBreakdown
             isLoadingUsage = false
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isLoadingUsage = false
             usageSummary = nil
             usageProfileBreakdown = nil
@@ -877,6 +971,7 @@ final class AppState: ObservableObject {
 
         do {
             let items = try await skillBrowserService.listSkills(connection: profile)
+            guard isActiveWorkspace(profile) else { return }
             skills = items
             isLoadingSkills = false
 
@@ -900,6 +995,7 @@ final class AppState: ObservableObject {
                 }
             }
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isLoadingSkills = false
             skillsError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to load skills"))
@@ -920,11 +1016,11 @@ final class AppState: ObservableObject {
                 locator: summary.locator
             )
 
-            guard selectedSkillID == skillID else { return }
+            guard isActiveWorkspace(profile), selectedSkillID == skillID else { return }
             selectedSkillDetail = detail
             isLoadingSkillDetail = false
         } catch {
-            guard selectedSkillID == skillID else { return }
+            guard isActiveWorkspace(profile), selectedSkillID == skillID else { return }
             selectedSkillDetail = nil
             isLoadingSkillDetail = false
             skillsError = error.localizedDescription
@@ -937,8 +1033,9 @@ final class AppState: ObservableObject {
         guard !isSavingSkillDraft else { return false }
 
         if let validationError = draft.validationError {
-            skillsError = validationError
-            setStatusMessage(validationError)
+            let localizedError = L10n.string(validationError)
+            skillsError = localizedError
+            setStatusMessage(localizedError)
             return false
         }
 
@@ -951,6 +1048,7 @@ final class AppState: ObservableObject {
                 connection: profile,
                 draft: draft
             )
+            guard isActiveWorkspace(profile) else { return false }
             await loadSkills(reset: true)
             selectedSkillID = detail.id
             selectedSkillDetail = detail
@@ -958,6 +1056,7 @@ final class AppState: ObservableObject {
             setStatusMessage(L10n.string("%@ created", draft.normalizedName))
             return true
         } catch {
+            guard isActiveWorkspace(profile) else { return false }
             isSavingSkillDraft = false
             skillsError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to create skill"))
@@ -997,6 +1096,7 @@ final class AppState: ObservableObject {
                 ensureScriptsFolder: ensureScriptsFolder,
                 ensureTemplatesFolder: ensureTemplatesFolder
             )
+            guard isActiveWorkspace(profile) else { return false }
             await loadSkills(reset: true)
             selectedSkillID = updatedDetail.id
             selectedSkillDetail = updatedDetail
@@ -1004,6 +1104,7 @@ final class AppState: ObservableObject {
             setStatusMessage(L10n.string("%@ updated", updatedDetail.resolvedName))
             return true
         } catch {
+            guard isActiveWorkspace(profile) else { return false }
             isSavingSkillDraft = false
             skillsError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to update skill"))
@@ -1021,6 +1122,7 @@ final class AppState: ObservableObject {
 
         do {
             let jobs = try await cronBrowserService.listJobs(connection: profile)
+            guard isActiveWorkspace(profile) else { return }
             cronJobs = jobs
             isLoadingCronJobs = false
 
@@ -1031,6 +1133,7 @@ final class AppState: ObservableObject {
                 selectedCronJobID = jobs.first?.id
             }
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isLoadingCronJobs = false
             cronJobsError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to load cron jobs"))
@@ -1047,11 +1150,13 @@ final class AppState: ObservableObject {
 
         do {
             try await cronBrowserService.pauseJob(connection: profile, jobID: job.id)
+            guard isActiveWorkspace(profile) else { return }
             await loadCronJobs()
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             setStatusMessage(L10n.string("%@ paused", job.resolvedName))
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             cronJobsError = error.localizedDescription
@@ -1064,8 +1169,9 @@ final class AppState: ObservableObject {
         guard !isSavingCronJobDraft, !isOperatingOnCronJob else { return false }
 
         if let validationError = draft.validationError {
-            cronJobsError = validationError
-            setStatusMessage(validationError)
+            let localizedError = L10n.string(validationError)
+            cronJobsError = localizedError
+            setStatusMessage(localizedError)
             return false
         }
 
@@ -1075,12 +1181,14 @@ final class AppState: ObservableObject {
 
         do {
             let jobID = try await cronBrowserService.createJob(connection: profile, draft: draft)
+            guard isActiveWorkspace(profile) else { return false }
             await loadCronJobs()
             selectedCronJobID = jobID
             isSavingCronJobDraft = false
             setStatusMessage(L10n.string("%@ created", draft.normalizedName))
             return true
         } catch {
+            guard isActiveWorkspace(profile) else { return false }
             isSavingCronJobDraft = false
             cronJobsError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to create cron job"))
@@ -1093,8 +1201,9 @@ final class AppState: ObservableObject {
         guard !isSavingCronJobDraft, !isOperatingOnCronJob else { return false }
 
         if let validationError = draft.validationError {
-            cronJobsError = validationError
-            setStatusMessage(validationError)
+            let localizedError = L10n.string(validationError)
+            cronJobsError = localizedError
+            setStatusMessage(localizedError)
             return false
         }
 
@@ -1104,12 +1213,14 @@ final class AppState: ObservableObject {
 
         do {
             try await cronBrowserService.updateJob(connection: profile, jobID: job.id, draft: draft)
+            guard isActiveWorkspace(profile) else { return false }
             await loadCronJobs()
             selectedCronJobID = job.id
             isSavingCronJobDraft = false
             setStatusMessage(L10n.string("%@ updated", draft.normalizedName))
             return true
         } catch {
+            guard isActiveWorkspace(profile) else { return false }
             isSavingCronJobDraft = false
             cronJobsError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to update cron job"))
@@ -1127,11 +1238,13 @@ final class AppState: ObservableObject {
 
         do {
             try await cronBrowserService.resumeJob(connection: profile, jobID: job.id)
+            guard isActiveWorkspace(profile) else { return }
             await loadCronJobs()
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             setStatusMessage(L10n.string("%@ resumed", job.resolvedName))
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             cronJobsError = error.localizedDescription
@@ -1149,11 +1262,13 @@ final class AppState: ObservableObject {
 
         do {
             try await cronBrowserService.removeJob(connection: profile, jobID: job.id)
+            guard isActiveWorkspace(profile) else { return }
             await loadCronJobs()
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             setStatusMessage(L10n.string("%@ removed", job.resolvedName))
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             cronJobsError = error.localizedDescription
@@ -1172,11 +1287,13 @@ final class AppState: ObservableObject {
 
         do {
             try await cronBrowserService.runJobNow(connection: profile, jobID: job.id)
+            guard isActiveWorkspace(profile) else { return }
             await loadCronJobs()
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             setStatusMessage(L10n.string("Run requested for %@", job.resolvedName))
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isOperatingOnCronJob = false
             operatingCronJobID = nil
             cronJobsError = error.localizedDescription
@@ -1201,6 +1318,7 @@ final class AppState: ObservableObject {
                 connection: profile,
                 includeArchived: includeArchivedKanbanTasks
             )
+            guard isActiveWorkspace(profile) else { return }
             kanbanBoard = board
             isLoadingKanbanBoard = false
 
@@ -1219,6 +1337,7 @@ final class AppState: ObservableObject {
                 selectedKanbanTaskDetail = nil
             }
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isLoadingKanbanBoard = false
             kanbanError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to load Kanban board"))
@@ -1237,11 +1356,11 @@ final class AppState: ObservableObject {
                 connection: profile,
                 taskID: taskID
             )
-            guard selectedKanbanTaskID == taskID else { return }
+            guard isActiveWorkspace(profile), selectedKanbanTaskID == taskID else { return }
             selectedKanbanTaskDetail = detail
             isLoadingKanbanTaskDetail = false
         } catch {
-            guard selectedKanbanTaskID == taskID else { return }
+            guard isActiveWorkspace(profile), selectedKanbanTaskID == taskID else { return }
             selectedKanbanTaskDetail = nil
             isLoadingKanbanTaskDetail = false
             kanbanError = error.localizedDescription
@@ -1254,8 +1373,9 @@ final class AppState: ObservableObject {
         guard !isSavingKanbanTaskDraft, !isOperatingOnKanbanTask else { return false }
 
         if let validationError = draft.validationError {
-            kanbanError = validationError
-            setStatusMessage(validationError)
+            let localizedError = L10n.string(validationError)
+            kanbanError = localizedError
+            setStatusMessage(localizedError)
             return false
         }
 
@@ -1265,6 +1385,7 @@ final class AppState: ObservableObject {
 
         do {
             let taskID = try await kanbanBrowserService.createTask(connection: profile, draft: draft)
+            guard isActiveWorkspace(profile) else { return false }
             await loadKanbanBoard(includeArchived: includeArchivedKanbanTasks)
             selectedKanbanTaskID = taskID
             await loadKanbanTaskDetail(taskID: taskID)
@@ -1272,6 +1393,7 @@ final class AppState: ObservableObject {
             setStatusMessage(L10n.string("Kanban task created"))
             return true
         } catch {
+            guard isActiveWorkspace(profile) else { return false }
             isSavingKanbanTaskDraft = false
             kanbanError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to create Kanban task"))
@@ -1292,12 +1414,14 @@ final class AppState: ObservableObject {
 
         do {
             try await kanbanBrowserService.addComment(connection: profile, taskID: taskID, body: trimmed)
+            guard isActiveWorkspace(profile) else { return false }
             await reloadKanbanAfterOperation(taskID: taskID)
             isOperatingOnKanbanTask = false
             operatingKanbanTaskID = nil
             setStatusMessage(L10n.string("Comment added"))
             return true
         } catch {
+            guard isActiveWorkspace(profile) else { return false }
             isOperatingOnKanbanTask = false
             operatingKanbanTaskID = nil
             kanbanError = error.localizedDescription
@@ -1356,6 +1480,33 @@ final class AppState: ObservableObject {
         }
     }
 
+    func deleteKanbanTask(taskID: String) async {
+        guard let profile = activeConnection else { return }
+        guard !isOperatingOnKanbanTask else { return }
+
+        isOperatingOnKanbanTask = true
+        operatingKanbanTaskID = taskID
+        kanbanError = nil
+
+        do {
+            try await kanbanBrowserService.deleteTask(connection: profile, taskID: taskID)
+            guard isActiveWorkspace(profile) else { return }
+            await loadKanbanBoard(includeArchived: includeArchivedKanbanTasks)
+            if selectedKanbanTaskID == nil {
+                selectedKanbanTaskDetail = nil
+            }
+            isOperatingOnKanbanTask = false
+            operatingKanbanTaskID = nil
+            setStatusMessage(L10n.string("Kanban task deleted"))
+        } catch {
+            guard isActiveWorkspace(profile) else { return }
+            isOperatingOnKanbanTask = false
+            operatingKanbanTaskID = nil
+            kanbanError = error.localizedDescription
+            setStatusMessage(L10n.string("Unable to delete Kanban task"))
+        }
+    }
+
     func dispatchKanbanNow() async {
         guard let profile = activeConnection else { return }
         guard !isDispatchingKanban else { return }
@@ -1366,6 +1517,7 @@ final class AppState: ObservableObject {
 
         do {
             let result = try await kanbanBrowserService.dispatchNow(connection: profile)
+            guard isActiveWorkspace(profile) else { return }
             await loadKanbanBoard(includeArchived: includeArchivedKanbanTasks)
             isDispatchingKanban = false
 
@@ -1381,6 +1533,7 @@ final class AppState: ObservableObject {
                 setStatusMessage(L10n.string("Kanban dispatcher nudged"))
             }
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isDispatchingKanban = false
             kanbanError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to nudge Kanban dispatcher"))
@@ -1434,11 +1587,13 @@ final class AppState: ObservableObject {
 
         do {
             try await operation(profile)
+            guard isActiveWorkspace(profile) else { return }
             await reloadKanbanAfterOperation(taskID: taskID)
             isOperatingOnKanbanTask = false
             operatingKanbanTaskID = nil
             setStatusMessage(L10n.string(successMessage))
         } catch {
+            guard isActiveWorkspace(profile) else { return }
             isOperatingOnKanbanTask = false
             operatingKanbanTaskID = nil
             kanbanError = error.localizedDescription
@@ -1493,6 +1648,10 @@ final class AppState: ObservableObject {
         trackedFile.resolvedRemotePath(using: overview?.paths) ?? connection.remotePath(for: trackedFile)
     }
 
+    private func isActiveWorkspace(_ profile: ConnectionProfile) -> Bool {
+        activeConnection?.workspaceScopeFingerprint == profile.workspaceScopeFingerprint
+    }
+
     private func setDocument(_ document: FileEditorDocument) {
         workspaceFileDocuments[document.fileID] = document
     }
@@ -1533,17 +1692,33 @@ final class AppState: ObservableObject {
         sessionMessageSignature = SessionMessageSignature(messages: [])
     }
 
-    private func setSessionMessages(_ messages: [SessionMessage]) async {
+    private func setSessionMessages(
+        _ messages: [SessionMessage],
+        for profile: ConnectionProfile? = nil,
+        sessionID: String? = nil
+    ) async {
         let signature = await Task.detached(priority: .userInitiated) {
             SessionMessageSignature(messages: messages)
         }.value
 
+        if let profile {
+            guard isActiveWorkspace(profile) else { return }
+        }
+        if let sessionID {
+            guard selectedSessionID == sessionID else { return }
+        }
         guard signature != sessionMessageSignature else { return }
 
         let displays = await Task.detached(priority: .userInitiated) {
             Self.makeSessionMessageDisplays(from: messages)
         }.value
 
+        if let profile {
+            guard isActiveWorkspace(profile) else { return }
+        }
+        if let sessionID {
+            guard selectedSessionID == sessionID else { return }
+        }
         applySessionMessages(messages, displays: displays, signature: signature)
     }
 
@@ -1566,6 +1741,7 @@ final class AppState: ObservableObject {
 
     private func startSessionTranscriptPolling(sessionID: String, connection: ConnectionProfile) {
         stopSessionTranscriptPolling()
+        let workspaceScopeFingerprint = connection.workspaceScopeFingerprint
 
         sessionTranscriptPollingTask = Task { [sessionBrowserService] in
             while !Task.isCancelled {
@@ -1581,6 +1757,7 @@ final class AppState: ObservableObject {
 
                     let shouldBuildDisplays = await MainActor.run { [weak self] in
                         guard let self,
+                              self.activeConnection?.workspaceScopeFingerprint == workspaceScopeFingerprint,
                               self.isSendingSessionMessage,
                               self.selectedSessionID == sessionID else {
                             return false
@@ -1599,6 +1776,7 @@ final class AppState: ObservableObject {
 
                     await MainActor.run { [weak self] in
                         guard let self,
+                              self.activeConnection?.workspaceScopeFingerprint == workspaceScopeFingerprint,
                               self.isSendingSessionMessage,
                               self.selectedSessionID == sessionID else {
                             return
@@ -1700,8 +1878,9 @@ final class AppState: ObservableObject {
     }
 
     private func prepareWorkspaceForActiveConnection() async {
-        guard activeConnection != nil else { return }
+        guard let profile = activeConnection else { return }
         await refreshOverview()
+        guard isActiveWorkspace(profile) else { return }
 
         guard overviewError == nil else {
             isRefreshingOverview = false
@@ -1756,6 +1935,8 @@ final class AppState: ObservableObject {
     }
 
     private func resetWorkspaceStateForConnectionChange(closeTerminalTabs: Bool = true) {
+        isBusy = false
+        connectionTestRequestID = nil
         overview = nil
         overviewError = nil
         isRefreshingOverview = false

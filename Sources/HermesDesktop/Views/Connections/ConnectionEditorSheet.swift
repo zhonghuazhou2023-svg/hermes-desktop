@@ -126,7 +126,7 @@ struct ConnectionEditorSheet: View {
 
                             if draft.trimmedAlias != nil && draft.trimmedHost != nil {
                                 HermesInsetSurface {
-                                    Text("The SSH alias currently takes priority over Host. The Host value is preserved in the profile, but it will be ignored while the alias is present.")
+                                    Text(L10n.string("The SSH alias currently takes priority over Host. The Host value is preserved in the profile, but it will be ignored while the alias is present."))
                                         .font(.subheadline)
                                         .foregroundStyle(.orange)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -140,10 +140,10 @@ struct ConnectionEditorSheet: View {
 
                         HermesInsetSurface {
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("Hermes profile")
+                                Text(L10n.string("Hermes profile"))
                                     .font(.headline)
 
-                                Text("Leave it empty for the default Hermes home at `~/.hermes`. Set a profile name like `researcher` to target `~/.hermes/profiles/researcher` on the same host.")
+                                Text(L10n.string("Leave it empty for the default Hermes home at `~/.hermes`. Set a profile name like `researcher` to target `~/.hermes/profiles/researcher` on the same host."))
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -171,12 +171,12 @@ struct ConnectionEditorSheet: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(L10n.string("Cancel")) {
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(L10n.string("Save")) {
                         var updatedDraft = draft
                         updatedDraft.sshPort = parsedPort
                         onSave(updatedDraft)
@@ -223,7 +223,7 @@ struct ConnectionEditorSheet: View {
             return "Enter a valid SSH port from 1 to 65535."
         }
 
-        return candidate.isValid ? nil : "Check the connection details before saving."
+        return candidate.validationError
     }
 
     private var hermesProfileBinding: Binding<String> {

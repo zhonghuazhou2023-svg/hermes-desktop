@@ -4,6 +4,11 @@ import Testing
 
 struct SessionMessageMetadataTests {
     @Test
+    func assistantRoleDisplaysAsAgent() {
+        #expect(SessionMessageRole.assistant.displayTitle == "Agent")
+    }
+
+    @Test
     func displayMetadataHidesDuplicateReasoningContent() throws {
         let message = try decodeMessage("""
         {
@@ -75,7 +80,7 @@ struct SessionMessageMetadataTests {
         #expect(display.isToolMessage)
         #expect(display.toolSummary?.title == "Tool output")
         #expect(display.toolSummary?.preview?.hasPrefix("tool output line") == true)
-        #expect(display.toolSummary?.detailPreview?.count == 5_000)
+        #expect(SessionToolMessageSummary.detailPreview(from: display.content)?.count == 5_000)
         #expect(display.toolSummary?.isDetailPreviewTruncated == true)
         #expect(display.content == content)
     }

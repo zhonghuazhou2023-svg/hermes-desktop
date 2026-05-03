@@ -73,7 +73,7 @@ struct SkillsView: View {
         } else if let error = appState.skillsError, appState.skills.isEmpty {
             HermesSurfacePanel {
                 ContentUnavailableView(
-                    "Unable to load skills",
+                    L10n.string("Unable to load skills"),
                     systemImage: "exclamationmark.triangle",
                     description: Text(error)
                 )
@@ -82,9 +82,9 @@ struct SkillsView: View {
         } else if appState.skills.isEmpty {
             HermesSurfacePanel {
                 ContentUnavailableView(
-                    "No skills found",
+                    L10n.string("No skills found"),
                     systemImage: "book.closed",
-                    description: Text("No readable SKILL.md files were discovered in the Hermes skill roots for this SSH target.")
+                    description: Text(L10n.string("No readable SKILL.md files were discovered in the Hermes skill roots for this SSH target."))
                 )
                 .frame(maxWidth: .infinity, minHeight: 300)
             }
@@ -95,9 +95,9 @@ struct SkillsView: View {
             ) {
                 if filteredSkills.isEmpty {
                     ContentUnavailableView(
-                        "No matching skills",
+                        L10n.string("No matching skills"),
                         systemImage: "magnifyingglass",
-                        description: Text("Try searching by skill name or category.")
+                        description: Text(L10n.string("Try searching by skill name or category."))
                     )
                     .frame(maxWidth: .infinity, minHeight: 300)
                 } else {
@@ -271,7 +271,7 @@ private struct SkillCardRow: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 } else {
-                    Text("No description in frontmatter")
+                    Text(L10n.string("No description in frontmatter"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .italic()

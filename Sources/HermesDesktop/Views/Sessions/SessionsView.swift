@@ -86,7 +86,7 @@ struct SessionsView: View {
 
     @ViewBuilder
     private var sessionsContent: some View {
-        if appState.sessions.isEmpty && appState.sessionSearchQuery.isEmpty && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if !hasVisibleSessions && appState.sessionSearchQuery.isEmpty && trimmedSearchText.isEmpty {
             sessionsPanel
         } else {
             sessionsPanel
@@ -99,37 +99,37 @@ struct SessionsView: View {
 
     @ViewBuilder
     private var sessionsPanel: some View {
-        if appState.isLoadingSessions && appState.sessions.isEmpty {
+        if appState.isLoadingSessions && !hasVisibleSessions {
             HermesSurfacePanel {
                 HermesLoadingState(
                     label: "Loading sessions…",
                     minHeight: 300
                 )
             }
-        } else if let error = appState.sessionsError, appState.sessions.isEmpty {
+        } else if let error = appState.sessionsError, !hasVisibleSessions {
             HermesSurfacePanel {
                 ContentUnavailableView(
-                    "Unable to load sessions",
+                    L10n.string("Unable to load sessions"),
                     systemImage: "exclamationmark.triangle",
                     description: Text(error)
                 )
                 .frame(maxWidth: .infinity, minHeight: 300)
             }
-        } else if appState.sessions.isEmpty && !appState.sessionSearchQuery.isEmpty {
+        } else if !hasVisibleSessions && !appState.sessionSearchQuery.isEmpty {
             HermesSurfacePanel {
                 ContentUnavailableView(
-                    "No matching sessions",
+                    L10n.string("No matching sessions"),
                     systemImage: "magnifyingglass",
-                    description: Text("Try searching by session name, ID, or preview text.")
+                    description: Text(L10n.string("Try searching by session name, ID, or preview text."))
                 )
                 .frame(maxWidth: .infinity, minHeight: 300)
             }
-        } else if appState.sessions.isEmpty {
+        } else if !hasVisibleSessions {
             HermesSurfacePanel {
                 ContentUnavailableView(
-                    "No sessions found",
+                    L10n.string("No sessions found"),
                     systemImage: "tray",
-                    description: Text("No readable Hermes sessions were discovered yet for this SSH target.")
+                    description: Text(L10n.string("No readable Hermes sessions were discovered yet for this SSH target."))
                 )
                 .frame(maxWidth: .infinity, minHeight: 300)
             }
@@ -140,15 +140,30 @@ struct SessionsView: View {
             ) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(appState.sessions) { session in
-                            SessionCardRow(
-                                session: session,
-                                isSelected: session.id == appState.selectedSessionID
-                            ) {
-                                Task {
-                                    await appState.loadSessionDetail(sessionID: session.id)
-                                }
+                        if !visiblePinnedSessions.isEmpty {
+                            SessionSectionHeader(
+                                title: L10n.string(
+                                    "Pinned Sessions (%@)",
+                                    "\(visiblePinnedSessions.count)"
+                                )
+                            )
+
+                            ForEach(visiblePinnedSessions) { session in
+                                sessionRow(session)
                             }
+
+                            if !visibleStoredSessions.isEmpty {
+                                Divider()
+                                    .padding(.vertical, 2)
+
+                                SessionSectionHeader(
+                                    title: L10n.string("All Sessions (%@)", "\(appState.totalSessionsCount)")
+                                )
+                            }
+                        }
+
+                        ForEach(visibleStoredSessions) { session in
+                            sessionRow(session)
                         }
 
                         if appState.hasMoreSessions {
@@ -172,6 +187,41 @@ struct SessionsView: View {
         }
     }
 
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var shouldShowPinnedSessions: Bool {
+        appState.sessionSearchQuery.isEmpty && trimmedSearchText.isEmpty
+    }
+
+    private var visiblePinnedSessions: [SessionSummary] {
+        shouldShowPinnedSessions ? appState.pinnedSessionSummaries : []
+    }
+
+    private var visibleStoredSessions: [SessionSummary] {
+        shouldShowPinnedSessions ? appState.unpinnedSessions : appState.sessions
+    }
+
+    private var hasVisibleSessions: Bool {
+        !visiblePinnedSessions.isEmpty || !visibleStoredSessions.isEmpty
+    }
+
+    private func sessionRow(_ session: SessionSummary) -> some View {
+        SessionCardRow(
+            session: session,
+            isSelected: session.id == appState.selectedSessionID,
+            isPinned: appState.isSessionPinned(session.id),
+            onTogglePin: {
+                appState.toggleSessionPin(session)
+            }
+        ) {
+            Task {
+                await appState.loadSessionDetail(sessionID: session.id)
+            }
+        }
+    }
+
     private var sessionsSearchToolbar: some View {
         HermesExpandableSearchField(
             text: $searchText,
@@ -181,89 +231,134 @@ struct SessionsView: View {
 
     private var panelTitle: String {
         if appState.sessionSearchQuery.isEmpty {
-            return "Stored Sessions (\(appState.totalSessionsCount))"
+            return L10n.string("Sessions Library (%@)", "\(appState.totalSessionsCount)")
         }
 
-        return "Matching Sessions (\(appState.totalSessionsCount))"
+        return L10n.string("Matching Sessions (%@)", "\(appState.totalSessionsCount)")
     }
 
     private var selectedSession: SessionSummary? {
         guard let selectedSessionID = appState.selectedSessionID else { return nil }
-        return appState.sessions.first(where: { $0.id == selectedSessionID })
+        return appState.sessionSummary(for: selectedSessionID)
+    }
+}
+
+private struct SessionSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 2)
     }
 }
 
 private struct SessionCardRow: View {
     let session: SessionSummary
     let isSelected: Bool
+    let isPinned: Bool
+    let onTogglePin: () -> Void
     let onSelect: () -> Void
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(session.resolvedTitle)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.leading)
-
-                        Text(session.id)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    if let count = session.messageCount {
-                        HermesBadge(text: L10n.string("%@ messages", "\(count)"), tint: .secondary)
-                    }
+            content
+                .padding(.trailing, 34)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(isSelected ? 0.12 : 0.06), lineWidth: 1)
                 }
-
-                if let preview = session.preview, !preview.isEmpty {
-                    Text(preview)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) {
-                        if let startedAt = session.startedAt?.dateValue {
-                            metaLabel(L10n.string("Started %@", DateFormatters.relativeFormatter().localizedString(for: startedAt, relativeTo: .now)))
-                        }
-
-                        if let lastActive = session.lastActive?.dateValue {
-                            metaLabel(L10n.string("Active %@", DateFormatters.relativeFormatter().localizedString(for: lastActive, relativeTo: .now)))
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        if let startedAt = session.startedAt?.dateValue {
-                            metaLabel(L10n.string("Started %@", DateFormatters.relativeFormatter().localizedString(for: startedAt, relativeTo: .now)))
-                        }
-
-                        if let lastActive = session.lastActive?.dateValue {
-                            metaLabel(L10n.string("Active %@", DateFormatters.relativeFormatter().localizedString(for: lastActive, relativeTo: .now)))
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(isSelected ? 0.12 : 0.06), lineWidth: 1)
-            }
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) {
+            pinButton
+                .padding(.top, 12)
+                .padding(.trailing, 14)
+        }
+    }
+
+    private var pinButton: some View {
+        Button(action: onTogglePin) {
+            Image(systemName: isPinned ? "pin.fill" : "pin")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isPinned ? Color.orange : Color.secondary)
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle()
+                        .fill(isPinned ? Color.orange.opacity(0.18) : Color.secondary.opacity(0.08))
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(pinHelpText)
+        .accessibilityLabel(pinHelpText)
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(session.resolvedTitle)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+
+                    Text(session.id)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 12)
+
+                if let count = session.messageCount {
+                    HermesBadge(text: L10n.string("%@ messages", "\(count)"), tint: .secondary)
+                }
+            }
+
+            if let preview = session.preview, !preview.isEmpty {
+                Text(preview)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    if let startedAt = session.startedAt?.dateValue {
+                        metaLabel(L10n.string("Started %@", DateFormatters.relativeFormatter().localizedString(for: startedAt, relativeTo: .now)))
+                    }
+
+                    if let lastActive = session.lastActive?.dateValue {
+                        metaLabel(L10n.string("Active %@", DateFormatters.relativeFormatter().localizedString(for: lastActive, relativeTo: .now)))
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    if let startedAt = session.startedAt?.dateValue {
+                        metaLabel(L10n.string("Started %@", DateFormatters.relativeFormatter().localizedString(for: startedAt, relativeTo: .now)))
+                    }
+
+                    if let lastActive = session.lastActive?.dateValue {
+                        metaLabel(L10n.string("Active %@", DateFormatters.relativeFormatter().localizedString(for: lastActive, relativeTo: .now)))
+                    }
+                }
+            }
+        }
+    }
+
+    private var pinHelpText: String {
+        L10n.string(isPinned ? "Unpin session" : "Pin session")
     }
 
     private func metaLabel(_ text: String) -> some View {

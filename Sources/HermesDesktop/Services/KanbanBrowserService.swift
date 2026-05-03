@@ -199,6 +199,28 @@ final class KanbanBrowserService: @unchecked Sendable {
         )
     }
 
+    func deleteTask(connection: ConnectionProfile, taskID: String) async throws {
+        _ = try await performMutation(
+            connection: connection,
+            request: KanbanMutationRequest(
+                kanbanHome: connection.remoteKanbanHomePath,
+                author: connection.resolvedHermesProfileName,
+                action: "delete",
+                taskID: taskID,
+                title: nil,
+                body: nil,
+                assignee: nil,
+                priority: nil,
+                tenant: nil,
+                skills: nil,
+                triage: nil,
+                text: nil,
+                result: nil,
+                maxSpawn: nil
+            )
+        )
+    }
+
     func dispatchNow(connection: ConnectionProfile, maxSpawn: Int = 8) async throws -> KanbanDispatchResult? {
         try await performMutation(
             connection: connection,
@@ -282,6 +304,8 @@ final class KanbanBrowserService: @unchecked Sendable {
         def perform_with_module(action, task_id, author):
             kb = import_kanban_module(required=True)
             db_path = kanban_db_path()
+            if action == "delete" and not db_path.exists():
+                fail(f"No such Kanban task: {task_id}")
             os.environ["HERMES_HOME"] = str(kanban_home_path())
             with kb.connect(db_path) as conn:
                 if action == "create":
@@ -340,6 +364,15 @@ final class KanbanBrowserService: @unchecked Sendable {
                     if not kb.archive_task(conn, task_id):
                         fail(f"Cannot archive Kanban task: {task_id}")
                     return ("Task archived.", task_id, None)
+
+                if action == "delete":
+                    if not delete_task_rows(conn, task_id, author):
+                        fail(f"No such Kanban task: {task_id}")
+                    try:
+                        kb.recompute_ready(conn)
+                    except Exception:
+                        pass
+                    return ("Task deleted.", None, None)
 
                 if action == "dispatch":
                     res = kb.dispatch_once(
@@ -428,6 +461,20 @@ final class KanbanBrowserService: @unchecked Sendable {
             if action == "archive":
                 run_hermes_cli(["kanban", "archive", task_id])
                 return ("Task archived.", task_id, None)
+
+            if action == "delete":
+                db_path = kanban_db_path()
+                if not db_path.exists():
+                    fail(f"No such Kanban task: {task_id}")
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
+                try:
+                    if not delete_task_rows(conn, task_id, author):
+                        fail(f"No such Kanban task: {task_id}")
+                    recompute_ready_rows(conn)
+                finally:
+                    conn.close()
+                return ("Task deleted.", None, None)
 
             if action == "dispatch":
                 data = run_hermes_cli(
@@ -666,6 +713,78 @@ final class KanbanBrowserService: @unchecked Sendable {
                 (value,),
             ).fetchone()
             return int(row["n"] or 0) if row else 0
+
+        def delete_task_rows(conn, task_id, author):
+            if not conn or not task_id or not table_exists(conn, "tasks"):
+                return False
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                if row is None:
+                    conn.rollback()
+                    return False
+
+                if table_exists(conn, "task_links"):
+                    conn.execute(
+                        "DELETE FROM task_links WHERE parent_id = ? OR child_id = ?",
+                        (task_id, task_id),
+                    )
+                if table_exists(conn, "task_comments"):
+                    conn.execute("DELETE FROM task_comments WHERE task_id = ?", (task_id,))
+                if table_exists(conn, "task_events"):
+                    conn.execute("DELETE FROM task_events WHERE task_id = ?", (task_id,))
+                if table_exists(conn, "task_runs"):
+                    conn.execute("DELETE FROM task_runs WHERE task_id = ?", (task_id,))
+                if table_exists(conn, "kanban_notify_subs"):
+                    conn.execute("DELETE FROM kanban_notify_subs WHERE task_id = ?", (task_id,))
+
+                cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+                conn.commit()
+                return cur.rowcount == 1
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+        def recompute_ready_rows(conn):
+            if not conn or not table_exists(conn, "tasks") or not table_exists(conn, "task_links"):
+                return 0
+            import time
+            promoted = 0
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                todo_rows = conn.execute("SELECT id FROM tasks WHERE status = 'todo'").fetchall()
+                for row in todo_rows:
+                    task_id = row["id"]
+                    parents = conn.execute(
+                        "SELECT t.status FROM tasks t "
+                        "JOIN task_links l ON l.parent_id = t.id "
+                        "WHERE l.child_id = ?",
+                        (task_id,),
+                    ).fetchall()
+                    if all(parent["status"] == "done" for parent in parents):
+                        cur = conn.execute(
+                            "UPDATE tasks SET status = 'ready' WHERE id = ? AND status = 'todo'",
+                            (task_id,),
+                        )
+                        if cur.rowcount == 1:
+                            if table_exists(conn, "task_events"):
+                                conn.execute(
+                                    "INSERT INTO task_events (task_id, kind, payload, created_at) "
+                                    "VALUES (?, 'promoted', NULL, ?)",
+                                    (task_id, int(time.time())),
+                                )
+                            promoted += 1
+                conn.commit()
+                return promoted
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
 
         def link_ids(conn, task_id, parents):
             if not conn or not table_exists(conn, "task_links"):

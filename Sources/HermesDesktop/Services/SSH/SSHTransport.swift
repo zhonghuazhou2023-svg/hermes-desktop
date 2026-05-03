@@ -46,6 +46,9 @@ final class SSHTransport: @unchecked Sendable {
         guard !connection.effectiveTarget.isEmpty else {
             throw SSHTransportError.invalidConnection("The SSH target is empty.")
         }
+        if let validationError = connection.sshValidationError {
+            throw SSHTransportError.invalidConnection(validationError)
+        }
 
         let arguments = sshArguments(
             for: connection,
@@ -149,6 +152,7 @@ final class SSHTransport: @unchecked Sendable {
             arguments.append(contentsOf: ["-p", String(port)])
         }
 
+        arguments.append("--")
         arguments.append(destination(for: connection))
 
         if let remoteCommand {

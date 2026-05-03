@@ -53,7 +53,7 @@ struct KanbanView: View {
                 taskDraft = KanbanTaskDraft()
                 isCreatingTask = true
             } label: {
-                Label("New", systemImage: "plus")
+                Label(L10n.string("New"), systemImage: "plus")
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.borderedProminent)
@@ -67,7 +67,7 @@ struct KanbanView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Label("Dispatch", systemImage: "paperplane")
+                    Label(L10n.string("Dispatch"), systemImage: "paperplane")
                         .labelStyle(.iconOnly)
                 }
             }
@@ -83,15 +83,46 @@ struct KanbanView: View {
     }
 
     private var filterBar: some View {
-        HStack(spacing: 10) {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                filterControls
+
+                Spacer(minLength: 12)
+
+                searchField
+                    .frame(width: 220, alignment: .trailing)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                HermesWrappingFlowLayout(horizontalSpacing: 10, verticalSpacing: 8) {
+                    filterControls
+                }
+
+                HStack {
+                    Spacer(minLength: 0)
+
+                    searchField
+                        .frame(width: 220, alignment: .trailing)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var filterControls: some View {
+        KanbanFilterControl(label: "Status") {
             Picker("Status", selection: $statusFilter) {
                 ForEach(KanbanStatusFilter.allCases, id: \.self) { option in
                     Text(L10n.string(option.title)).tag(option)
                 }
             }
             .pickerStyle(.menu)
-            .frame(width: 130)
+            .labelsHidden()
+            .frame(width: 104)
+        }
 
+        KanbanFilterControl(label: "Assignee") {
             Picker("Assignee", selection: $assigneeFilter) {
                 Text(L10n.string("All assignees")).tag(KanbanFilterOption.all)
                 ForEach(assigneeOptions, id: \.self) { assignee in
@@ -99,8 +130,11 @@ struct KanbanView: View {
                 }
             }
             .pickerStyle(.menu)
-            .frame(width: 150)
+            .labelsHidden()
+            .frame(width: 124)
+        }
 
+        KanbanFilterControl(label: "Tenant") {
             Picker("Tenant", selection: $tenantFilter) {
                 Text(L10n.string("All tenants")).tag(KanbanFilterOption.all)
                 ForEach(tenantOptions, id: \.self) { tenant in
@@ -108,20 +142,24 @@ struct KanbanView: View {
                 }
             }
             .pickerStyle(.menu)
-            .frame(width: 140)
+            .labelsHidden()
+            .frame(width: 118)
             .disabled(tenantOptions.isEmpty)
-
-            Toggle("Archived", isOn: $appState.includeArchivedKanbanTasks)
-                .toggleStyle(.checkbox)
-
-            Spacer(minLength: 12)
-
-            HermesExpandableSearchField(
-                text: $searchText,
-                prompt: "Search tasks",
-                expandedWidth: 220
-            )
         }
+
+        Toggle("Archived", isOn: $appState.includeArchivedKanbanTasks)
+            .toggleStyle(.checkbox)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .fixedSize()
+    }
+
+    private var searchField: some View {
+        HermesExpandableSearchField(
+            text: $searchText,
+            prompt: "Search tasks",
+            expandedWidth: 220
+        )
     }
 
     @ViewBuilder
@@ -136,7 +174,7 @@ struct KanbanView: View {
         } else if let error = appState.kanbanError, appState.kanbanBoard == nil {
             HermesSurfacePanel {
                 ContentUnavailableView(
-                    "Unable to load Kanban",
+                    L10n.string("Unable to load Kanban"),
                     systemImage: "exclamationmark.triangle",
                     description: Text(error)
                 )
@@ -146,7 +184,7 @@ struct KanbanView: View {
             HermesSurfacePanel {
                 VStack(alignment: .leading, spacing: 18) {
                     ContentUnavailableView(
-                        "No Kanban board yet",
+                        L10n.string("No Kanban board yet"),
                         systemImage: "rectangle.3.group",
                         description: Text(L10n.string("No host-wide Kanban database exists at %@. Create the first task to initialize it on the remote host.", board.databasePath))
                     )
@@ -156,7 +194,7 @@ struct KanbanView: View {
                         taskDraft = KanbanTaskDraft()
                         isCreatingTask = true
                     } label: {
-                        Label("Create First Task", systemImage: "plus")
+                        Label(L10n.string("Create First Task"), systemImage: "plus")
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(appState.isSavingKanbanTaskDraft)
@@ -182,9 +220,9 @@ struct KanbanView: View {
 
                     if filteredTasks.isEmpty {
                         ContentUnavailableView(
-                            "No matching tasks",
+                            L10n.string("No matching tasks"),
                             systemImage: "magnifyingglass",
-                            description: Text("Try a different search, status, assignee, tenant, or archive filter.")
+                            description: Text(L10n.string("Try a different search, status, assignee, tenant, or archive filter."))
                         )
                         .frame(maxWidth: .infinity, minHeight: 320)
                     } else {
@@ -303,6 +341,9 @@ struct KanbanView: View {
                 },
                 onArchive: { taskID in
                     await appState.archiveKanbanTask(taskID: taskID)
+                },
+                onDelete: { taskID in
+                    await appState.deleteKanbanTask(taskID: taskID)
                 }
             )
         }
@@ -450,6 +491,13 @@ private enum KanbanFilterOption: Hashable {
     case value(String)
 }
 
+private enum KanbanActionKind: Hashable {
+    case assign
+    case comment
+    case complete
+    case block
+}
+
 private enum KanbanColors {
     static func tint(for status: KanbanTaskStatus) -> Color {
         switch status {
@@ -470,6 +518,27 @@ private enum KanbanColors {
         case .other:
             .secondary
         }
+    }
+}
+
+private struct KanbanFilterControl<Content: View>: View {
+    let label: String
+    let content: Content
+
+    init(label: String, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(L10n.string(label))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            content
+        }
+        .fixedSize()
     }
 }
 
@@ -636,13 +705,13 @@ private struct KanbanTaskEditorView: View {
                         }
 
                         HStack(spacing: 10) {
-                            Button("Create Task") {
+                            Button(L10n.string("Create Task")) {
                                 Task { await onSave() }
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(isSaving || draft.validationError != nil)
 
-                            Button("Cancel", action: onCancel)
+                            Button(L10n.string("Cancel"), action: onCancel)
                                 .buttonStyle(.bordered)
                                 .disabled(isSaving)
 
@@ -668,7 +737,7 @@ private struct KanbanTaskEditorView: View {
                 ) {
                     VStack(alignment: .leading, spacing: 14) {
                         KanbanFormField(label: "Title") {
-                            TextField("Investigate failing release check", text: $draft.title)
+                            TextField(L10n.string("Investigate failing release check"), text: $draft.title)
                                 .textFieldStyle(.roundedBorder)
                         }
 
@@ -693,7 +762,7 @@ private struct KanbanTaskEditorView: View {
                             }
 
                             KanbanFormField(label: "Tenant") {
-                                TextField("optional", text: $draft.tenant)
+                                TextField(L10n.string("optional"), text: $draft.tenant)
                                     .textFieldStyle(.roundedBorder)
                             }
                         }
@@ -743,9 +812,12 @@ private struct KanbanTaskDetailView: View {
     let onUnblock: (String) async -> Void
     let onComplete: (String, String?) async -> Void
     let onArchive: (String) async -> Void
+    let onDelete: (String) async -> Void
 
     @State private var draft = KanbanActionDraft()
     @State private var showArchiveConfirmation = false
+    @State private var showDeleteConfirmation = false
+    @State private var expandedAction: KanbanActionKind?
 
     private let metadataColumns = [
         GridItem(.adaptive(minimum: 160), alignment: .topLeading)
@@ -767,6 +839,7 @@ private struct KanbanTaskDetailView: View {
                         }
                     } else {
                         metadataPanel(task)
+                        actionPanel(task)
 
                         if let body = task.trimmedBody {
                             HermesSurfacePanel(
@@ -794,8 +867,6 @@ private struct KanbanTaskDetailView: View {
                             }
                         }
 
-                        actionPanel(task)
-
                         if let detail {
                             linksPanel(detail)
                             commentsPanel(task, detail)
@@ -808,16 +879,16 @@ private struct KanbanTaskDetailView: View {
                     HermesSurfacePanel {
                         VStack(alignment: .leading, spacing: 18) {
                             ContentUnavailableView(
-                                "Select a Kanban task",
+                                L10n.string("Select a Kanban task"),
                                 systemImage: "rectangle.3.group",
-                                description: Text("Choose a task from the host-wide board, or create a new one.")
+                                description: Text(L10n.string("Choose a task from the host-wide board, or create a new one."))
                             )
                             .frame(maxWidth: .infinity, minHeight: 280)
 
                             Button {
                                 onCreate()
                             } label: {
-                                Label("Create Kanban Task", systemImage: "plus")
+                                Label(L10n.string("Create Kanban Task"), systemImage: "plus")
                             }
                             .buttonStyle(.borderedProminent)
                         }
@@ -834,17 +905,26 @@ private struct KanbanTaskDetailView: View {
                 blockReason: "",
                 assignee: task?.assignee ?? ""
             )
+            expandedAction = nil
         }
         .onAppear {
             draft.assignee = task?.assignee ?? ""
         }
-        .alert("Archive this task?", isPresented: $showArchiveConfirmation, presenting: task) { task in
-            Button("Archive", role: .destructive) {
+        .alert(L10n.string("Archive this task?"), isPresented: $showArchiveConfirmation, presenting: task) { task in
+            Button(L10n.string("Archive"), role: .destructive) {
                 Task { await onArchive(task.id) }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.string("Cancel"), role: .cancel) {}
         } message: { task in
             Text(L10n.string("“%@” will be hidden from the active board unless archived tasks are shown.", task.resolvedTitle))
+        }
+        .alert(L10n.string("Delete this task?"), isPresented: $showDeleteConfirmation, presenting: task) { task in
+            Button(L10n.string("Delete"), role: .destructive) {
+                Task { await onDelete(task.id) }
+            }
+            Button(L10n.string("Cancel"), role: .cancel) {}
+        } message: { task in
+            Text(L10n.string("“%@” will be permanently removed from the remote Kanban database, including comments, links, events, and run history. Remote workspace files are left untouched.", task.resolvedTitle))
         }
     }
 
@@ -887,7 +967,7 @@ private struct KanbanTaskDetailView: View {
     @ViewBuilder
     private func primaryActions(_ task: KanbanTask) -> some View {
         if task.canUnblock {
-            Button("Unblock") {
+            Button(L10n.string("Unblock")) {
                 Task { await onUnblock(task.id) }
             }
             .buttonStyle(.borderedProminent)
@@ -896,14 +976,14 @@ private struct KanbanTaskDetailView: View {
 
         if task.canComplete {
             if task.status == .blocked {
-                Button("Complete") {
-                    Task { await onComplete(task.id, draft.normalizedResult) }
+                Button(L10n.string("Complete...")) {
+                    toggleAction(.complete)
                 }
                 .buttonStyle(.bordered)
                 .disabled(operationInFlight)
             } else {
-                Button("Complete") {
-                    Task { await onComplete(task.id, draft.normalizedResult) }
+                Button(L10n.string("Complete...")) {
+                    toggleAction(.complete)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(operationInFlight)
@@ -911,18 +991,24 @@ private struct KanbanTaskDetailView: View {
         }
 
         if task.canBlock {
-            Button("Block") {
-                Task { await onBlock(task.id, draft.normalizedBlockReason) }
+            Button(L10n.string("Block...")) {
+                toggleAction(.block)
             }
             .buttonStyle(.bordered)
             .disabled(operationInFlight)
         }
 
-        Button("Archive", role: .destructive) {
+        Button(L10n.string("Archive"), role: .destructive) {
             showArchiveConfirmation = true
         }
         .buttonStyle(.bordered)
         .disabled(operationInFlight || task.status == .archived)
+
+        Button(L10n.string("Delete"), role: .destructive) {
+            showDeleteConfirmation = true
+        }
+        .buttonStyle(.bordered)
+        .disabled(operationInFlight)
 
         if operationInFlight {
             ProgressView()
@@ -999,34 +1085,65 @@ private struct KanbanTaskDetailView: View {
 
     private func actionPanel(_ task: KanbanTask) -> some View {
         HermesSurfacePanel(
-            title: "Actions",
-            subtitle: "Small, explicit mutations sent to the remote board over SSH."
+            title: "Update Task",
+            subtitle: nil
         ) {
-            VStack(alignment: .leading, spacing: 14) {
-                KanbanFormField(label: "Assignee") {
-                    HStack(spacing: 8) {
-                        ComboBoxTextField(text: $draft.assignee, suggestions: assignees, placeholder: "unassigned")
+            VStack(alignment: .leading, spacing: 0) {
+                KanbanActionDisclosureRow(
+                    title: "Assignee",
+                    summary: task.assignee.map { "@\($0)" } ?? "Unassigned",
+                    systemImage: "person.crop.circle",
+                    isExpanded: expandedAction == .assign,
+                    isDisabled: operationInFlight,
+                    onToggle: { toggleAction(.assign) }
+                ) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            ComboBoxTextField(text: $draft.assignee, suggestions: assignees, placeholder: "unassigned")
 
-                        Button("Assign") {
-                            Task { await onAssign(task.id, draft.normalizedAssignee) }
+                            Button(L10n.string("Apply")) {
+                                Task {
+                                    await onAssign(task.id, draft.normalizedAssignee)
+                                    expandedAction = nil
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(operationInFlight || draft.normalizedAssignee == task.assignee)
                         }
-                        .buttonStyle(.bordered)
-                        .disabled(operationInFlight)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            ComboBoxTextField(text: $draft.assignee, suggestions: assignees, placeholder: "unassigned")
+
+                            Button(L10n.string("Apply")) {
+                                Task {
+                                    await onAssign(task.id, draft.normalizedAssignee)
+                                    expandedAction = nil
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(operationInFlight || draft.normalizedAssignee == task.assignee)
+                        }
                     }
                 }
 
-                KanbanFormField(label: "Comment") {
-                    VStack(alignment: .trailing, spacing: 8) {
-                        TextEditor(text: $draft.comment)
-                            .font(.body)
-                            .frame(minHeight: 72)
-                            .padding(8)
-                            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                KanbanActionDivider()
 
-                        Button("Add Comment") {
+                KanbanActionDisclosureRow(
+                    title: "Comment",
+                    summary: "Add a note to the task history",
+                    systemImage: "text.bubble",
+                    isExpanded: expandedAction == .comment,
+                    isDisabled: operationInFlight,
+                    onToggle: { toggleAction(.comment) }
+                ) {
+                    VStack(alignment: .trailing, spacing: 8) {
+                        KanbanTextEditor(text: $draft.comment, placeholder: L10n.string("Write a short update..."))
+
+                        Button(L10n.string("Add Comment")) {
                             Task {
                                 if await onComment(task.id, draft.comment) {
                                     draft.comment = ""
+                                    expandedAction = nil
                                 }
                             }
                         }
@@ -1035,16 +1152,98 @@ private struct KanbanTaskDetailView: View {
                     }
                 }
 
-                KanbanFormField(label: "Completion result") {
-                    TextField("Optional handoff summary", text: $draft.result)
-                        .textFieldStyle(.roundedBorder)
+                if task.canComplete {
+                    KanbanActionDivider()
+
+                    KanbanActionDisclosureRow(
+                        title: "Complete",
+                        summary: "Finish the task with an optional handoff",
+                        systemImage: "checkmark.circle",
+                        isExpanded: expandedAction == .complete,
+                        isDisabled: operationInFlight,
+                        onToggle: { toggleAction(.complete) }
+                    ) {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                TextField(L10n.string("Optional handoff summary"), text: $draft.result)
+                                    .textFieldStyle(.roundedBorder)
+
+                                Button(L10n.string("Complete")) {
+                                    Task {
+                                        await onComplete(task.id, draft.normalizedResult)
+                                        expandedAction = nil
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(operationInFlight)
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                TextField(L10n.string("Optional handoff summary"), text: $draft.result)
+                                    .textFieldStyle(.roundedBorder)
+
+                                Button(L10n.string("Complete")) {
+                                    Task {
+                                        await onComplete(task.id, draft.normalizedResult)
+                                        expandedAction = nil
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(operationInFlight)
+                            }
+                        }
+                    }
                 }
 
-                KanbanFormField(label: "Block reason") {
-                    TextField("Optional reason", text: $draft.blockReason)
-                        .textFieldStyle(.roundedBorder)
+                if task.canBlock {
+                    KanbanActionDivider()
+
+                    KanbanActionDisclosureRow(
+                        title: "Block",
+                        summary: "Pause the task and record the reason",
+                        systemImage: "hand.raised",
+                        isExpanded: expandedAction == .block,
+                        isDisabled: operationInFlight,
+                        onToggle: { toggleAction(.block) }
+                    ) {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                TextField(L10n.string("Optional reason"), text: $draft.blockReason)
+                                    .textFieldStyle(.roundedBorder)
+
+                                Button(L10n.string("Block")) {
+                                    Task {
+                                        await onBlock(task.id, draft.normalizedBlockReason)
+                                        expandedAction = nil
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(operationInFlight)
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                TextField(L10n.string("Optional reason"), text: $draft.blockReason)
+                                    .textFieldStyle(.roundedBorder)
+
+                                Button(L10n.string("Block")) {
+                                    Task {
+                                        await onBlock(task.id, draft.normalizedBlockReason)
+                                        expandedAction = nil
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(operationInFlight)
+                            }
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    private func toggleAction(_ action: KanbanActionKind) {
+        withAnimation(.snappy(duration: 0.16)) {
+            expandedAction = expandedAction == action ? nil : action
         }
     }
 
@@ -1155,6 +1354,113 @@ private struct KanbanFormField<Content: View>: View {
     }
 }
 
+private struct KanbanActionDisclosureRow<Content: View>: View {
+    let title: String
+    let summary: String
+    let systemImage: String
+    let isExpanded: Bool
+    let isDisabled: Bool
+    let onToggle: () -> Void
+    let content: Content
+
+    init(
+        title: String,
+        summary: String,
+        systemImage: String,
+        isExpanded: Bool,
+        isDisabled: Bool,
+        onToggle: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.summary = summary
+        self.systemImage = systemImage
+        self.isExpanded = isExpanded
+        self.isDisabled = isDisabled
+        self.onToggle = onToggle
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button(action: onToggle) {
+                HStack(spacing: 11) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L10n.string(title))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+
+                        Text(L10n.string(summary))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isDisabled)
+
+            if isExpanded {
+                content
+                    .padding(.leading, 29)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+private struct KanbanActionDivider: View {
+    var body: some View {
+        Divider()
+            .padding(.leading, 29)
+            .opacity(0.55)
+    }
+}
+
+private struct KanbanTextEditor: View {
+    @Binding var text: String
+    let placeholder: String
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: $text)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 68)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 7)
+
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(L10n.string(placeholder))
+                    .font(.body)
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 14)
+                    .allowsHitTesting(false)
+            }
+        }
+        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
 private struct ComboBoxTextField: View {
     @Binding var text: String
     let suggestions: [String]
@@ -1162,12 +1468,13 @@ private struct ComboBoxTextField: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            TextField(placeholder, text: $text)
+            TextField(L10n.string(placeholder), text: $text)
                 .textFieldStyle(.roundedBorder)
+                .layoutPriority(1)
 
             if !suggestions.isEmpty {
                 Menu {
-                    Button("Unassigned") {
+                    Button(L10n.string("Unassigned")) {
                         text = ""
                     }
 
@@ -1183,6 +1490,7 @@ private struct ComboBoxTextField: View {
                         .font(.caption.weight(.semibold))
                 }
                 .buttonStyle(.bordered)
+                .fixedSize()
                 .help(L10n.string("Pick a discovered assignee"))
             }
         }

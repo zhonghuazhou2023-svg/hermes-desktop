@@ -100,4 +100,22 @@ struct WorkspaceFileModelsTests {
         #expect(entry.isTooLargeToEdit)
         #expect(!entry.canBookmark)
     }
+
+    @Test
+    func directoryEntryDoesNotTreatSymlinksAsPlainEditableFiles() {
+        let entry = RemoteDirectoryEntry(
+            name: "config-link.json",
+            path: "/tmp/config-link.json",
+            displayPath: "~/config-link.json",
+            kind: .symlink,
+            size: 128,
+            modifiedAt: nil,
+            isReadable: true,
+            isWritable: true,
+            isSymlink: true
+        )
+
+        #expect(!entry.canBookmark)
+        #expect(!entry.canOpenDirectory)
+    }
 }

@@ -8,6 +8,8 @@ struct AppPaths {
     let preferencesURL: URL
     let controlSocketDirectoryURL: URL
 
+    private static let privateDirectoryPermissions = NSNumber(value: Int16(0o700))
+
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
 
@@ -17,16 +19,21 @@ struct AppPaths {
         ).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         let appSupport = baseSupport.appendingPathComponent("HermesDesktop", isDirectory: true)
 
-        let controlDirectory = URL(fileURLWithPath: "/tmp", isDirectory: true)
-            .appendingPathComponent("hermes-desktop-control", isDirectory: true)
+        let baseCaches = fileManager.urls(
+            for: .cachesDirectory,
+            in: .userDomainMask
+        ).first ?? baseSupport
+        let cacheSupport = baseCaches.appendingPathComponent("HermesDesktop", isDirectory: true)
+        let controlDirectory = cacheSupport.appendingPathComponent("ControlSockets", isDirectory: true)
 
         self.applicationSupportURL = appSupport
         self.connectionsURL = appSupport.appendingPathComponent("connections.json")
         self.preferencesURL = appSupport.appendingPathComponent("preferences.json")
         self.controlSocketDirectoryURL = controlDirectory
 
-        createIfNeeded(at: appSupport)
-        createIfNeeded(at: controlDirectory)
+        createPrivateDirectoryIfNeeded(at: appSupport)
+        createPrivateDirectoryIfNeeded(at: cacheSupport)
+        createPrivateDirectoryIfNeeded(at: controlDirectory)
     }
 
     func controlPath(for connection: ConnectionProfile) -> String {
@@ -35,10 +42,22 @@ struct AppPaths {
             .path
     }
 
-    private func createIfNeeded(at url: URL) {
+    private func createPrivateDirectoryIfNeeded(at url: URL) {
+        let attributes: [FileAttributeKey: Any] = [
+            .posixPermissions: Self.privateDirectoryPermissions
+        ]
+
         if !fileManager.fileExists(atPath: url.path) {
-            try? fileManager.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
+            try? fileManager.createDirectory(at: url, withIntermediateDirectories: true, attributes: attributes)
+        } else {
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+               !isDirectory.boolValue {
+                return
+            }
         }
+
+        try? fileManager.setAttributes(attributes, ofItemAtPath: url.path)
     }
 
     private func controlSocketIdentifier(for connection: ConnectionProfile) -> String {

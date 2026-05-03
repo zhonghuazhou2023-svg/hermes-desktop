@@ -81,16 +81,16 @@ struct SkillDetailView: View {
                     HermesSurfacePanel {
                         VStack(alignment: .leading, spacing: 18) {
                             ContentUnavailableView(
-                                "Select a skill",
+                                L10n.string("Select a skill"),
                                 systemImage: "book.closed",
-                                description: Text("Choose a Hermes skill from the active host to inspect its metadata and full SKILL.md.")
+                                description: Text(L10n.string("Choose a Hermes skill from the active host to inspect its metadata and full SKILL.md."))
                             )
                             .frame(maxWidth: .infinity, minHeight: 240)
 
                             Button {
                                 onCreate()
                             } label: {
-                                Label("Create New Skill", systemImage: "plus")
+                                Label(L10n.string("Create New Skill"), systemImage: "plus")
                             }
                             .buttonStyle(.borderedProminent)
                         }
@@ -131,7 +131,7 @@ struct SkillDetailView: View {
                             HermesBadge(text: category, tint: .secondary)
                         }
 
-                        Button("Edit SKILL.md") {
+                        Button(L10n.string("Edit SKILL.md")) {
                             onEdit()
                         }
                         .buttonStyle(.bordered)
@@ -175,7 +175,7 @@ struct SkillDetailView: View {
 
                 HermesInsetSurface {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Remote path")
+                        Text(L10n.string("Remote path"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -186,7 +186,7 @@ struct SkillDetailView: View {
                 }
 
                 if detail.isReadOnly {
-                    Text("External skill directories are discovery-only in Hermes. This skill is available to inspect here, but edits still belong in the local Hermes skills store.")
+                    Text(L10n.string("External skill directories are discovery-only in Hermes. This skill is available to inspect here, but edits still belong in the local Hermes skills store."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -295,7 +295,7 @@ struct SkillEditorView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(isSaving || saveDisabled)
 
-                    Button("Cancel", action: onCancel)
+                    Button(L10n.string("Cancel"), action: onCancel)
                         .buttonStyle(.bordered)
                         .disabled(isSaving)
 
@@ -361,7 +361,7 @@ struct SkillEditorView: View {
 
                 HermesInsetSurface {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Remote path")
+                        Text(L10n.string("Remote path"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -392,7 +392,7 @@ struct SkillEditorView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Companion Folders")
+                    Text(L10n.string("Companion Folders"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
 
@@ -440,7 +440,7 @@ struct SkillEditorView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HermesInsetSurface {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Remote path")
+                        Text(L10n.string("Remote path"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -451,7 +451,7 @@ struct SkillEditorView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Companion Folders")
+                    Text(L10n.string("Companion Folders"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
 
