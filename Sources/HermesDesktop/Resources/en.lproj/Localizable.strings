@@ -412,13 +412,19 @@
 "Slack Home" = "Slack Home";
 "WhatsApp Home" = "WhatsApp Home";
 "Email" = "Email";
+"Set Custom" = "Set Custom";
+"Select %@ color" = "Select %@ color";
 "Neutral dark theme with high contrast and quiet ANSI accents." = "Neutral dark theme with high contrast and quiet ANSI accents.";
 "Deep forest backdrop with calm greens and warm highlights." = "Deep forest backdrop with calm greens and warm highlights.";
 "Cool navy tones that stay readable for long SSH sessions." = "Cool navy tones that stay readable for long SSH sessions.";
 "Light, editorial theme for daytime work and quiet rooms." = "Light, editorial theme for daytime work and quiet rooms.";
+"Deep plum terminal with clear cyan, gold, and violet accents." = "Deep plum terminal with clear cyan, gold, and violet accents.";
+"Cool light theme with crisp graphite text and measured color." = "Cool light theme with crisp graphite text and measured color.";
 "Dusk" = "Dusk";
 "Evergreen" = "Evergreen";
 "Paper" = "Paper";
+"Aubergine" = "Aubergine";
+"Porcelain" = "Porcelain";
 "New Skill" = "New Skill";
 "Create Skill" = "Create Skill";
 "Local" = "Local";
@@ -530,7 +536,7 @@
 "Send" = "Send";
 "Agent is working" = "Agent is working";
 "Create a Kanban task" = "Create a Kanban task";
-"Nudge the remote Kanban dispatcher once" = "Nudge the remote Kanban dispatcher once";
+"Nudge dispatcher" = "Nudge dispatcher";
 "Search tasks" = "Search tasks";
 "Archived" = "Archived";
 "All assignees" = "All assignees";
@@ -553,7 +559,6 @@
 "Desktop reads and updates this board over SSH without using the web dashboard API." = "Desktop reads and updates this board over SSH without using the web dashboard API.";
 "Write below to begin a new Hermes conversation, or choose an existing session from the list." = "Write below to begin a new Hermes conversation, or choose an existing session from the list.";
 "Select a session to inspect its transcript, metadata and last activity." = "Select a session to inspect its transcript, metadata and last activity.";
-"Dispatch" = "Dispatch";
 "Create First Task" = "Create First Task";
 "Try a different search, status, assignee, tenant, or archive filter." = "Try a different search, status, assignee, tenant, or archive filter.";
 "Create Task" = "Create Task";
@@ -694,8 +699,6 @@
 "Create Board" = "Create Board";
 "project-alpha" = "project-alpha";
 "Project Alpha" = "Project Alpha";
-"rectangle.3.group" = "rectangle.3.group";
-"#4F8CFF" = "#4F8CFF";
 "Make remote current board" = "Make remote current board";
 "The task will be created in the selected Hermes Kanban board over SSH." = "The task will be created in the selected Hermes Kanban board over SSH.";
 "Choose a task from the selected board, or create a new one." = "Choose a task from the selected board, or create a new one.";
@@ -704,9 +707,6 @@
 "Board slug is required." = "Board slug is required.";
 "Board slug must be 1-64 lowercase letters, numbers, hyphens, or underscores." = "Board slug must be 1-64 lowercase letters, numbers, hyphens, or underscores.";
 "Board" = "Board";
-"Icon" = "Icon";
-"Color" = "Color";
-"Display metadata lives on the remote Hermes host." = "Display metadata lives on the remote Hermes host.";
 "Home Channels" = "Home Channels";
 "Gateway home subscriptions for this task." = "Gateway home subscriptions for this task.";
 "Check for Updates…" = "Check for Updates…";

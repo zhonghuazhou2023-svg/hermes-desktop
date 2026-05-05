@@ -72,14 +72,20 @@ struct KanbanView: View {
     }
 
     private var kanbanToolbar: some View {
-        HStack(spacing: 8) {
-            boardPicker
-            statusPicker
-            createTaskButton
-            dispatchButton
-            advancedFilterMenu
+        HermesWrappingFlowLayout(horizontalSpacing: 10, verticalSpacing: 8) {
+            HStack(spacing: 8) {
+                boardPicker
+                statusPicker
+                advancedFilterMenu
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
+            HStack(spacing: 8) {
+                createTaskButton
+                dispatchButton
+            }
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .fixedSize(horizontal: true, vertical: false)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -130,39 +136,54 @@ struct KanbanView: View {
                 .disabled(appState.isOperatingOnKanbanBoard)
             }
         } label: {
-            Label(selectedBoardTitle, systemImage: "rectangle.3.group")
+            KanbanToolbarMenuLabel(
+                title: "Board",
+                value: selectedBoardTitle,
+                systemImage: "rectangle.3.group",
+                width: 172
+            )
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
+        .controlSize(.regular)
         .disabled(appState.isLoadingKanbanBoards || appState.isSavingKanbanBoardDraft || appState.isOperatingOnKanbanBoard)
         .help(L10n.string("Select Kanban board"))
     }
 
     private var statusPicker: some View {
-        HStack(spacing: 6) {
-            Text(L10n.string("Status"))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Picker("", selection: $statusFilter) {
+        Menu {
+            Section {
                 ForEach(KanbanStatusFilter.allCases, id: \.self) { option in
-                    Text(L10n.string(option.title)).tag(option)
+                    Button {
+                        statusFilter = option
+                    } label: {
+                        menuLabel(option.title, isSelected: statusFilter == option)
+                    }
                 }
+            } header: {
+                Text(L10n.string("Status"))
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .controlSize(.small)
-            .frame(width: 112)
+        } label: {
+            KanbanToolbarMenuLabel(
+                title: "Status",
+                value: L10n.string(statusFilter.title),
+                systemImage: "circle.dashed.inset.filled",
+                width: 136
+            )
         }
-        .fixedSize(horizontal: true, vertical: false)
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
     }
 
     private var createTaskButton: some View {
-        HermesCreateActionButton("New Task", help: "Create a Kanban task") {
-            taskDraft = KanbanTaskDraft()
-            isCreatingBoard = false
-            isCreatingTask = true
+        Button {
+            startCreatingTask()
+        } label: {
+            Label(L10n.string("New Task"), systemImage: "plus")
         }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        .fixedSize(horizontal: true, vertical: false)
+        .help(L10n.string("Create a Kanban task"))
         .disabled(appState.isSavingKanbanTaskDraft || appState.isOperatingOnKanbanTask)
     }
 
@@ -175,13 +196,13 @@ struct KanbanView: View {
                     .controlSize(.small)
                     .frame(width: 14, height: 14)
             } else {
-                Label(L10n.string("Dispatch"), systemImage: "paperplane")
+                Label(L10n.string("Nudge dispatcher"), systemImage: "bolt")
                     .labelStyle(.iconOnly)
             }
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
-        .help(L10n.string("Nudge the remote Kanban dispatcher once"))
+        .controlSize(.regular)
+        .help(L10n.string("Nudge dispatcher"))
         .disabled(appState.isDispatchingKanban || appState.isLoadingKanbanBoard)
     }
 
@@ -231,13 +252,25 @@ struct KanbanView: View {
                 menuLabel("Archived", isSelected: appState.includeArchivedKanbanTasks)
             }
         } label: {
-            Label(
-                L10n.string("Filter"),
-                systemImage: hasAdvancedFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
-            )
+            Label {
+                HStack(spacing: 6) {
+                    Text(L10n.string("Filter"))
+
+                    if activeAdvancedFilterCount > 0 {
+                        Text("\(activeAdvancedFilterCount)")
+                            .font(.caption2.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.accentColor, in: Capsule())
+                    }
+                }
+            } icon: {
+                Image(systemName: hasAdvancedFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+            }
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
+        .controlSize(.regular)
         .tint(hasAdvancedFilters ? .accentColor : nil)
     }
 
@@ -252,8 +285,22 @@ struct KanbanView: View {
     }
 
     private var hasAdvancedFilters: Bool {
-        assigneeFilter != .all ||
+        activeAdvancedFilterCount > 0
+    }
+
+    private var activeAdvancedFilterCount: Int {
+        var count = 0
+        if assigneeFilter != .all { count += 1 }
+        if tenantFilter != .all { count += 1 }
+        if appState.includeArchivedKanbanTasks { count += 1 }
+        return count
+    }
+
+    private var isFilteringTasks: Bool {
+        statusFilter != .all ||
+            assigneeFilter != .all ||
             tenantFilter != .all ||
+            !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
             appState.includeArchivedKanbanTasks
     }
 
@@ -290,8 +337,7 @@ struct KanbanView: View {
                     .frame(maxWidth: .infinity, minHeight: 260)
 
                     Button {
-                        taskDraft = KanbanTaskDraft()
-                        isCreatingTask = true
+                        startCreatingTask()
                     } label: {
                         Label(L10n.string("Create First Task"), systemImage: "plus")
                     }
@@ -318,22 +364,16 @@ struct KanbanView: View {
                     }
 
                     if filteredTasks.isEmpty {
-                        ContentUnavailableView(
-                            L10n.string("No matching tasks"),
-                            systemImage: "magnifyingglass",
-                            description: Text(L10n.string("Try a different search, status, assignee, tenant, or archive filter."))
+                        KanbanEmptyTaskState(
+                            isFiltering: isFilteringTasks,
+                            isSaving: appState.isSavingKanbanTaskDraft,
+                            onCreate: startCreatingTask
                         )
-                        .frame(maxWidth: .infinity, minHeight: 320)
                     } else {
-                        ViewThatFits(in: .horizontal) {
-                            kanbanBoardLayout(board)
-                                .frame(minWidth: 920)
-
-                            ScrollView {
-                                kanbanGroupedList(board)
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        ScrollView {
+                            kanbanGroupedList(board)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
                 }
             }
@@ -528,13 +568,8 @@ struct KanbanView: View {
     private var panelTitle: String {
         let total = appState.kanbanBoard?.tasks.count ?? 0
         let filtered = filteredTasks.count
-        let isFiltering = statusFilter != .all ||
-            assigneeFilter != .all ||
-            tenantFilter != .all ||
-            !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            appState.includeArchivedKanbanTasks
 
-        if isFiltering {
+        if isFilteringTasks {
             return L10n.string("Kanban Tasks (%@ of %@)", "\(filtered)", "\(total)")
         }
 
@@ -543,7 +578,7 @@ struct KanbanView: View {
 
     private func boardSubtitle(_ board: KanbanBoard) -> String {
         let boardName = appState.selectedKanbanBoard?.resolvedName ?? selectedBoardTitle
-        return "\(boardName) at \(board.databasePath). The selected Hermes profile is used as operator context, not as board scope."
+        return "\(boardName) - \(board.databasePath) - SSH-native, active profile as operator"
     }
 
     private func dispatcherWarning(for board: KanbanBoard) -> String? {
@@ -554,6 +589,12 @@ struct KanbanView: View {
 
     private func selectTask(_ task: KanbanTask) {
         Task { await appState.loadKanbanTaskDetail(taskID: task.id) }
+    }
+
+    private func startCreatingTask() {
+        taskDraft = KanbanTaskDraft()
+        isCreatingBoard = false
+        isCreatingTask = true
     }
 }
 
@@ -651,6 +692,77 @@ private enum KanbanColors {
         case .other:
             .secondary
         }
+    }
+}
+
+private struct KanbanToolbarMenuLabel: View {
+    let title: String
+    let value: String
+    let systemImage: String
+    let width: CGFloat
+
+    var body: some View {
+        Label {
+            HStack(spacing: 5) {
+                Text(L10n.string(title))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Text(value)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: width, alignment: .leading)
+    }
+}
+
+private struct KanbanEmptyTaskState: View {
+    let isFiltering: Bool
+    let isSaving: Bool
+    let onCreate: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ContentUnavailableView(
+                title,
+                systemImage: systemImage,
+                description: Text(description)
+            )
+
+            if !isFiltering {
+                Button {
+                    onCreate()
+                } label: {
+                    Label(L10n.string("Create Task"), systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSaving)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 320)
+    }
+
+    private var title: String {
+        isFiltering ? L10n.string("No matching tasks") : L10n.string("No tasks")
+    }
+
+    private var systemImage: String {
+        isFiltering ? "magnifyingglass" : "checklist"
+    }
+
+    private var description: String {
+        if isFiltering {
+            return L10n.string("Try a different search, status, assignee, tenant, or archive filter.")
+        }
+
+        return L10n.string("Choose a task from the selected board, or create a new one.")
     }
 }
 
@@ -915,10 +1027,7 @@ private struct KanbanBoardEditorView: View {
                     KanbanWarningBanner(message: errorMessage)
                 }
 
-                HermesSurfacePanel(
-                    title: "Board",
-                    subtitle: "Display metadata lives on the remote Hermes host."
-                ) {
+                HermesSurfacePanel(title: "Board") {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(alignment: .top, spacing: 14) {
                             KanbanFormField(label: "Slug") {
@@ -946,18 +1055,6 @@ private struct KanbanBoardEditorView: View {
                                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                                         .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
                                 }
-                        }
-
-                        HStack(alignment: .top, spacing: 14) {
-                            KanbanFormField(label: "Icon") {
-                                TextField(L10n.string("rectangle.3.group"), text: $draft.icon)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-
-                            KanbanFormField(label: "Color") {
-                                TextField(L10n.string("#4F8CFF"), text: $draft.color)
-                                    .textFieldStyle(.roundedBorder)
-                            }
                         }
 
                         Toggle(L10n.string("Make remote current board"), isOn: $draft.switchAfterCreate)

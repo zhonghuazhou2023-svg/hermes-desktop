@@ -412,13 +412,19 @@
 "Slack Home" = "Slack 主页";
 "WhatsApp Home" = "WhatsApp 主页";
 "Email" = "电子邮件";
+"Set Custom" = "设为自定义";
+"Select %@ color" = "选择%@颜色";
 "Neutral dark theme with high contrast and quiet ANSI accents." = "中性的深色主题，高对比度，ANSI 强调色克制。";
 "Deep forest backdrop with calm greens and warm highlights." = "深森林背景，搭配沉稳绿色和温暖高光。";
 "Cool navy tones that stay readable for long SSH sessions." = "冷静海军蓝色调，适合长时间 SSH 会话阅读。";
 "Light, editorial theme for daytime work and quiet rooms." = "浅色编辑风主题，适合白天工作和安静环境。";
+"Deep plum terminal with clear cyan, gold, and violet accents." = "深梅紫终端主题，搭配清晰的青色、金色和紫色强调。";
+"Cool light theme with crisp graphite text and measured color." = "冷调浅色主题，石墨文字清晰，配色克制。";
 "Dusk" = "暮色";
 "Evergreen" = "常青";
 "Paper" = "纸张";
+"Aubergine" = "茄紫";
+"Porcelain" = "瓷白";
 "New Skill" = "新建技能";
 "Create Skill" = "创建技能";
 "Local" = "本地";
@@ -530,7 +536,7 @@
 "Send" = "发送";
 "Agent is working" = "Agent 正在工作";
 "Create a Kanban task" = "创建 Kanban 任务";
-"Nudge the remote Kanban dispatcher once" = "触发一次远端 Kanban 调度器";
+"Nudge dispatcher" = "触发调度器";
 "Search tasks" = "搜索任务";
 "Archived" = "已归档";
 "All assignees" = "所有负责人";
@@ -553,7 +559,6 @@
 "Desktop reads and updates this board over SSH without using the web dashboard API." = "Desktop 通过 SSH 读取并更新此看板，不使用网页控制台 API。";
 "Write below to begin a new Hermes conversation, or choose an existing session from the list." = "在下方输入即可开始新的 Hermes 对话，也可以从列表中选择已有会话。";
 "Select a session to inspect its transcript, metadata and last activity." = "选择一个会话来查看记录、元数据和最后活动。";
-"Dispatch" = "调度";
 "Create First Task" = "创建第一个任务";
 "Try a different search, status, assignee, tenant, or archive filter." = "尝试不同的搜索、状态、负责人、租户或归档筛选。";
 "Create Task" = "创建任务";
@@ -694,8 +699,6 @@
 "Create Board" = "创建看板";
 "project-alpha" = "project-alpha";
 "Project Alpha" = "Project Alpha";
-"rectangle.3.group" = "rectangle.3.group";
-"#4F8CFF" = "#4F8CFF";
 "Make remote current board" = "设为远端当前看板";
 "The task will be created in the selected Hermes Kanban board over SSH." = "该任务会通过 SSH 创建到所选 Hermes Kanban 看板中。";
 "Choose a task from the selected board, or create a new one." = "从所选看板中选择任务，或创建新任务。";
@@ -704,9 +707,6 @@
 "Board slug is required." = "看板 slug 为必填项。";
 "Board slug must be 1-64 lowercase letters, numbers, hyphens, or underscores." = "看板 slug 必须为 1 到 64 个小写字母、数字、短横线或下划线。";
 "Board" = "看板";
-"Icon" = "图标";
-"Color" = "颜色";
-"Display metadata lives on the remote Hermes host." = "显示元数据存放在远端 Hermes 主机上。";
 "Home Channels" = "主页频道";
 "Gateway home subscriptions for this task." = "此任务的 gateway 主页订阅。";
 "Check for Updates…" = "检查更新…";

@@ -7,7 +7,15 @@ enum TerminalThemeStyle: String, Codable, Equatable {
     case evergreen
     case dusk
     case paper
+    case harbor
+    case ember
     case custom
+}
+
+struct TerminalThemeHSB: Equatable {
+    let hue: Double
+    let saturation: Double
+    let brightness: Double
 }
 
 struct TerminalThemeColor: Codable, Equatable, Hashable {
@@ -27,6 +35,44 @@ struct TerminalThemeColor: Codable, Equatable, Hashable {
             green: Double((hex >> 8) & 0xFF) / 255.0,
             blue: Double(hex & 0xFF) / 255.0
         )
+    }
+
+    init(hue: Double, saturation: Double, brightness: Double) {
+        let hue = Self.clamp(hue)
+        let saturation = Self.clamp(saturation)
+        let brightness = Self.clamp(brightness)
+        let sector = hue * 6
+        let wholeSector = Int(floor(sector))
+        let fractionalSector = sector - Double(wholeSector)
+        let low = brightness * (1 - saturation)
+        let falling = brightness * (1 - saturation * fractionalSector)
+        let rising = brightness * (1 - saturation * (1 - fractionalSector))
+
+        switch wholeSector % 6 {
+        case 0:
+            self.init(red: brightness, green: rising, blue: low)
+        case 1:
+            self.init(red: falling, green: brightness, blue: low)
+        case 2:
+            self.init(red: low, green: brightness, blue: rising)
+        case 3:
+            self.init(red: low, green: falling, blue: brightness)
+        case 4:
+            self.init(red: rising, green: low, blue: brightness)
+        default:
+            self.init(red: brightness, green: low, blue: falling)
+        }
+    }
+
+    init?(hexString: String) {
+        let rawValue = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = rawValue.hasPrefix("#") ? String(rawValue.dropFirst()) : rawValue
+
+        guard trimmed.count == 6, let value = Int(trimmed, radix: 16) else {
+            return nil
+        }
+
+        self.init(hex: value)
     }
 
     init(nsColor: NSColor) {
@@ -51,8 +97,48 @@ struct TerminalThemeColor: Codable, Equatable, Hashable {
         Color(nsColor: nsColor)
     }
 
+    var hexString: String {
+        String(format: "#%06X", hexValue)
+    }
+
+    var hsb: TerminalThemeHSB {
+        let maxComponent = max(red, green, blue)
+        let minComponent = min(red, green, blue)
+        let delta = maxComponent - minComponent
+        let brightness = maxComponent
+        let saturation = maxComponent == 0 ? 0 : delta / maxComponent
+
+        let rawHue: Double
+        if delta == 0 {
+            rawHue = 0
+        } else if maxComponent == red {
+            rawHue = ((green - blue) / delta) / 6
+        } else if maxComponent == green {
+            rawHue = (((blue - red) / delta) + 2) / 6
+        } else {
+            rawHue = (((red - green) / delta) + 4) / 6
+        }
+
+        let normalizedHue = rawHue < 0 ? rawHue + 1 : rawHue
+        return TerminalThemeHSB(
+            hue: normalizedHue,
+            saturation: saturation,
+            brightness: brightness
+        )
+    }
+
+    private var hexValue: Int {
+        (Self.rgbComponent(red) << 16) |
+            (Self.rgbComponent(green) << 8) |
+            Self.rgbComponent(blue)
+    }
+
     private static func clamp(_ value: Double) -> Double {
         min(max(value, 0), 1)
+    }
+
+    private static func rgbComponent(_ value: Double) -> Int {
+        min(max(Int((clamp(value) * 255).rounded()), 0), 255)
     }
 }
 
@@ -110,7 +196,7 @@ struct TerminalThemePreference: Codable, Equatable {
                 paletteStyle: basePreset.style,
                 isCustom: true
             )
-        case .graphite, .evergreen, .dusk, .paper:
+        case .graphite, .evergreen, .dusk, .paper, .harbor, .ember:
             let preset = Self.preset(for: style) ?? Self.graphitePreset
             return TerminalThemeAppearance(
                 style: preset.style,
@@ -148,11 +234,33 @@ struct TerminalThemePreference: Codable, Equatable {
         )
     }
 
+    func updatingPaletteStyle(_ style: TerminalThemeStyle) -> TerminalThemePreference {
+        let appearance = resolvedAppearance
+        return TerminalThemePreference(
+            style: .custom,
+            customBackgroundColor: appearance.backgroundColor,
+            customForegroundColor: appearance.foregroundColor,
+            paletteStyle: style
+        )
+    }
+
+    func settingCustomColors(backgroundColor: TerminalThemeColor, foregroundColor: TerminalThemeColor) -> TerminalThemePreference {
+        let appearance = resolvedAppearance
+        return TerminalThemePreference(
+            style: .custom,
+            customBackgroundColor: backgroundColor,
+            customForegroundColor: foregroundColor,
+            paletteStyle: appearance.paletteStyle
+        )
+    }
+
     static let quickPresets: [TerminalThemePreset] = [
         graphitePreset,
         evergreenPreset,
         duskPreset,
-        paperPreset
+        paperPreset,
+        auberginePreset,
+        porcelainPreset
     ]
 
     private static func preset(for style: TerminalThemeStyle) -> TerminalThemePreset? {
@@ -212,6 +320,34 @@ struct TerminalThemePreference: Codable, Equatable {
             0x416EA9, 0x8758A6, 0x2E8B92, 0xD9D2C4,
             0x6D7482, 0xCD6571, 0x66A07C, 0xBF9147,
             0x5C86BE, 0xA072BD, 0x53A6AD, 0xFFFDF8
+        ])
+    )
+
+    private static let auberginePreset = TerminalThemePreset(
+        style: .harbor,
+        name: "Aubergine",
+        summary: "Deep plum terminal with clear cyan, gold, and violet accents.",
+        backgroundColor: TerminalThemeColor(hex: 0x17111F),
+        foregroundColor: TerminalThemeColor(hex: 0xEFE7FF),
+        ansiPalette: palette([
+            0x241C30, 0xD06C7C, 0x84B979, 0xD8B767,
+            0x82A7E8, 0xC08DE0, 0x73C7C6, 0xD8D0E6,
+            0x645572, 0xE58A98, 0x9DD491, 0xE6CA82,
+            0x9BBDF2, 0xD2A6EC, 0x8DDEDC, 0xFCF8FF
+        ])
+    )
+
+    private static let porcelainPreset = TerminalThemePreset(
+        style: .ember,
+        name: "Porcelain",
+        summary: "Cool light theme with crisp graphite text and measured color.",
+        backgroundColor: TerminalThemeColor(hex: 0xF7F9FC),
+        foregroundColor: TerminalThemeColor(hex: 0x253040),
+        ansiPalette: palette([
+            0x2E3646, 0xB84E5F, 0x4F8A6B, 0x9B7228,
+            0x3F73B8, 0x7C5BA6, 0x2D8794, 0xE1E7F0,
+            0x5B6575, 0xC96575, 0x69A37F, 0xB88B3F,
+            0x5D8BD0, 0x9874BC, 0x4AA0AA, 0xFFFFFF
         ])
     )
 

@@ -251,16 +251,20 @@ private struct TerminalAppearanceToolbarButton: View {
 
 private struct TerminalAppearanceEditor: View {
     @Binding var themePreference: TerminalThemePreference
+    @State private var customTarget = TerminalColorTarget.background
+    @State private var draftBackgroundColor = TerminalThemeColor(hex: 0x12161D)
+    @State private var draftForegroundColor = TerminalThemeColor(hex: 0xE7ECF3)
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
+    private let presetColumns = [
+        GridItem(.flexible(), spacing: 7),
+        GridItem(.flexible(), spacing: 7),
+        GridItem(.flexible(), spacing: 7)
     ]
 
     var body: some View {
         let appearance = themePreference.resolvedAppearance
 
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(L10n.string("Terminal Theme"))
                     .font(.title3.weight(.semibold))
@@ -273,7 +277,7 @@ private struct TerminalAppearanceEditor: View {
 
             TerminalThemePreviewCard(appearance: appearance)
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(L10n.string("Quick Presets"))
                         .font(.headline)
@@ -286,7 +290,7 @@ private struct TerminalAppearanceEditor: View {
                     .buttonStyle(.borderless)
                 }
 
-                LazyVGrid(columns: columns, spacing: 12) {
+                LazyVGrid(columns: presetColumns, spacing: 7) {
                     ForEach(TerminalThemePreference.quickPresets) { preset in
                         Button {
                             themePreference = themePreference.selectingPreset(preset.style)
@@ -297,79 +301,95 @@ private struct TerminalAppearanceEditor: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .help(L10n.string(preset.summary))
                     }
                 }
             }
 
             HermesInsetSurface {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
                         Text(L10n.string("Custom Colors"))
                             .font(.headline)
 
                         Spacer()
-
-                        if appearance.isCustom {
-                            Text(L10n.string("ANSI accents follow %@.", L10n.string(paletteName(for: appearance.paletteStyle))))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
                     }
 
                     HStack(spacing: 12) {
-                        TerminalColorControl(
+                        TerminalCustomColorPreviewButton(
                             label: "Background",
-                            selection: backgroundBinding
-                        )
+                            color: draftBackgroundColor,
+                            isSelected: customTarget == .background
+                        ) {
+                            customTarget = .background
+                        }
 
-                        TerminalColorControl(
+                        TerminalCustomColorPreviewButton(
                             label: "Text",
-                            selection: foregroundBinding
-                        )
+                            color: draftForegroundColor,
+                            isSelected: customTarget == .foreground
+                        ) {
+                            customTarget = .foreground
+                        }
                     }
 
-                    Text(L10n.string("Custom colors update the running terminal immediately. Preset ANSI colors stay anchored so git output, prompts, and tools keep a readable palette."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    TerminalColorMatrixPicker(selection: customSelectionBinding)
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    HStack {
+                        Text(selectedCustomColor.hexString)
+                            .font(.system(.caption, design: .monospaced).weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Button(L10n.string("Set Custom")) {
+                            themePreference = themePreference.settingCustomColors(
+                                backgroundColor: draftBackgroundColor,
+                                foregroundColor: draftForegroundColor
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
                 }
             }
         }
-        .padding(20)
-        .frame(width: 430)
+        .padding(18)
+        .frame(width: 400)
+        .onAppear {
+            resetCustomDraft(from: appearance)
+        }
+        .onChange(of: themePreference) { _, newValue in
+            resetCustomDraft(from: newValue.resolvedAppearance)
+        }
     }
 
-    private var backgroundBinding: Binding<Color> {
+    private var customSelectionBinding: Binding<TerminalThemeColor> {
         Binding {
-            themePreference.resolvedAppearance.backgroundColor.swiftUIColor
+            selectedCustomColor
         } set: { newValue in
-            themePreference = themePreference.updatingBackgroundColor(TerminalThemeColor(nsColor: NSColor(newValue)))
+            switch customTarget {
+            case .background:
+                draftBackgroundColor = newValue
+            case .foreground:
+                draftForegroundColor = newValue
+            }
         }
     }
 
-    private var foregroundBinding: Binding<Color> {
-        Binding {
-            themePreference.resolvedAppearance.foregroundColor.swiftUIColor
-        } set: { newValue in
-            themePreference = themePreference.updatingForegroundColor(TerminalThemeColor(nsColor: NSColor(newValue)))
+    private var selectedCustomColor: TerminalThemeColor {
+        switch customTarget {
+        case .background:
+            return draftBackgroundColor
+        case .foreground:
+            return draftForegroundColor
         }
     }
 
-    private func paletteName(for style: TerminalThemeStyle) -> String {
-        switch style {
-        case .system:
-            return "System"
-        case .graphite:
-            return "Graphite"
-        case .evergreen:
-            return "Evergreen"
-        case .dusk:
-            return "Dusk"
-        case .paper:
-            return "Paper"
-        case .custom:
-            return "Custom"
-        }
+    private func resetCustomDraft(from appearance: TerminalThemeAppearance) {
+        draftBackgroundColor = appearance.backgroundColor
+        draftForegroundColor = appearance.foregroundColor
     }
 }
 
@@ -427,31 +447,35 @@ private struct TerminalPresetCard: View {
     let isSelected: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             ThemeSwatch(
                 backgroundColor: preset.backgroundColor.swiftUIColor,
                 foregroundColor: preset.foregroundColor.swiftUIColor
             )
 
-            VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
                 Text(L10n.string(preset.name))
-                    .font(.headline)
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
 
-                Text(L10n.string(preset.summary))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
+                }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
                 .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.06))
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
                 .strokeBorder(
                     isSelected ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.08),
                     lineWidth: isSelected ? 1.5 : 1
@@ -460,30 +484,155 @@ private struct TerminalPresetCard: View {
     }
 }
 
-private struct TerminalColorControl: View {
+private enum TerminalColorTarget: String, CaseIterable, Identifiable {
+    case background
+    case foreground
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .background:
+            return "Background"
+        case .foreground:
+            return "Text"
+        }
+    }
+}
+
+private struct TerminalCustomColorPreviewButton: View {
     let label: String
-    @Binding var selection: Color
+    let color: TerminalThemeColor
+    let isSelected: Bool
+    let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.string(label))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        Button(action: action) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(color.swiftUIColor)
+                    .frame(width: 34, height: 34)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+                    }
 
-            ColorPicker(label, selection: $selection, supportsOpacity: false)
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.string(label))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
 
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(selection)
-                .frame(height: 24)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                    Text(color.hexString)
+                        .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
+            }
         }
+        .buttonStyle(.plain)
+        .padding(7)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.045))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
+                .strokeBorder(isSelected ? Color.accentColor.opacity(0.62) : Color.primary.opacity(0.08), lineWidth: isSelected ? 1.5 : 1)
+        }
+        .help(L10n.string("Select %@ color", L10n.string(label)))
     }
+}
+
+private struct TerminalColorMatrixPicker: View {
+    @Binding var selection: TerminalThemeColor
+
+    private static let cellSize: CGFloat = 15
+    private static let cellSpacing: CGFloat = 1
+    private static let columnCount = TerminalColorMatrix.columnCount
+    private static let rowCount = TerminalColorMatrix.rowCount
+    private static let gridWidth = CGFloat(columnCount) * cellSize + CGFloat(columnCount - 1) * cellSpacing
+    private static let gridHeight = CGFloat(rowCount) * cellSize + CGFloat(rowCount - 1) * cellSpacing
+
+    private let columns = Array(
+        repeating: GridItem(.fixed(Self.cellSize), spacing: Self.cellSpacing),
+        count: Self.columnCount
+    )
+    private let colors = TerminalColorMatrix.palette
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: Self.cellSpacing) {
+            ForEach(colors, id: \.self) { color in
+                Button {
+                    selection = color
+                } label: {
+                    Rectangle()
+                        .fill(color.swiftUIColor)
+                        .frame(width: Self.cellSize, height: Self.cellSize)
+                        .overlay {
+                            if color == selection {
+                                Rectangle()
+                                    .strokeBorder(Color.white.opacity(0.88), lineWidth: 1.5)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .help(color.hexString)
+            }
+        }
+        .frame(width: Self.gridWidth, height: Self.gridHeight)
+        .clipShape(RoundedRectangle(cornerRadius: HermesTheme.insetCornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: HermesTheme.insetCornerRadius, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+        }
+    }
+}
+
+private enum TerminalColorMatrix {
+    static let columnCount = 20
+    static let rowCount = 10
+    static let palette: [TerminalThemeColor] = grayscaleRow + colorRows
+
+    private static let colorRowCount = rowCount - 1
+    private static let hues = [
+        0.50, 0.54, 0.58, 0.62, 0.667,
+        0.72, 0.78, 0.83, 0.88, 0.94,
+        0.00, 0.03, 0.06, 0.10, 0.14,
+        1.0 / 6.0, 0.20, 0.25, 0.333, 0.42
+    ]
+    private static let colorRowProfiles: [(saturation: Double, brightness: Double)] = [
+        (0.90, 0.18),
+        (1.00, 0.34),
+        (0.92, 0.50),
+        (1.00, 0.66),
+        (0.96, 0.82),
+        (1.00, 1.00),
+        (0.76, 0.98),
+        (0.52, 1.00),
+        (0.28, 1.00)
+    ]
+
+    private static let grayscaleRow: [TerminalThemeColor] = (0..<columnCount).map { index in
+        let brightness = 1 - Double(index) / Double(columnCount - 1)
+        return TerminalThemeColor(red: brightness, green: brightness, blue: brightness)
+    }
+
+    private static let colorRows: [TerminalThemeColor] = {
+        let rows = colorRowProfiles.prefix(colorRowCount).map { profile -> [TerminalThemeColor] in
+            hues.prefix(columnCount).map { hue in
+                TerminalThemeColor(
+                    hue: hue,
+                    saturation: profile.saturation,
+                    brightness: profile.brightness
+                )
+            }
+        }
+
+        return rows.flatMap(\.self)
+    }()
 }
 
 private struct ThemeSwatch: View {

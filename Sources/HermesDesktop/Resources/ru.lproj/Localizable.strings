@@ -412,13 +412,19 @@
 "Slack Home" = "Slack Home";
 "WhatsApp Home" = "WhatsApp Home";
 "Email" = "Email";
+"Set Custom" = "Установить свою";
+"Select %@ color" = "Выбрать цвет %@";
 "Neutral dark theme with high contrast and quiet ANSI accents." = "Нейтральная темная тема с высоким контрастом и спокойными ANSI-акцентами.";
 "Deep forest backdrop with calm greens and warm highlights." = "Глубокий лесной фон со спокойными зелеными тонами и теплыми акцентами.";
 "Cool navy tones that stay readable for long SSH sessions." = "Холодные темно-синие тона, читаемые во время долгих SSH-сеансов.";
 "Light, editorial theme for daytime work and quiet rooms." = "Светлая редакционная тема для дневной работы и тихих помещений.";
+"Deep plum terminal with clear cyan, gold, and violet accents." = "Глубокая сливовая тема с четкими голубыми, золотыми и фиолетовыми акцентами.";
+"Cool light theme with crisp graphite text and measured color." = "Холодная светлая тема с четким графитовым текстом и умеренным цветом.";
 "Dusk" = "Сумерки";
 "Evergreen" = "Вечнозеленая";
 "Paper" = "Бумага";
+"Aubergine" = "Баклажан";
+"Porcelain" = "Фарфор";
 "New Skill" = "Новый навык";
 "Create Skill" = "Создать навык";
 "Local" = "Локальный";
@@ -530,7 +536,7 @@
 "Send" = "Отправить";
 "Agent is working" = "Агент работает";
 "Create a Kanban task" = "Создать Kanban-задачу";
-"Nudge the remote Kanban dispatcher once" = "Один раз запустить удаленный диспетчер Kanban";
+"Nudge dispatcher" = "Запустить диспетчер";
 "Search tasks" = "Поиск задач";
 "Archived" = "Архив";
 "All assignees" = "Все исполнители";
@@ -553,7 +559,6 @@
 "Desktop reads and updates this board over SSH without using the web dashboard API." = "Desktop читает и обновляет эту доску через SSH, без API веб-панели.";
 "Write below to begin a new Hermes conversation, or choose an existing session from the list." = "Напишите ниже, чтобы начать новый разговор Hermes, или выберите существующий сеанс из списка.";
 "Select a session to inspect its transcript, metadata and last activity." = "Выберите сеанс, чтобы просмотреть transcript, метаданные и последнюю активность.";
-"Dispatch" = "Запустить";
 "Create First Task" = "Создать первую задачу";
 "Try a different search, status, assignee, tenant, or archive filter." = "Попробуйте другой поиск, статус, исполнителя, tenant или фильтр архива.";
 "Create Task" = "Создать задачу";
@@ -694,8 +699,6 @@
 "Create Board" = "Создать доску";
 "project-alpha" = "project-alpha";
 "Project Alpha" = "Project Alpha";
-"rectangle.3.group" = "rectangle.3.group";
-"#4F8CFF" = "#4F8CFF";
 "Make remote current board" = "Сделать текущей на удаленном хосте";
 "The task will be created in the selected Hermes Kanban board over SSH." = "Задача будет создана в выбранной Kanban-доске Hermes через SSH.";
 "Choose a task from the selected board, or create a new one." = "Выберите задачу из выбранной доски или создайте новую.";
@@ -704,9 +707,6 @@
 "Board slug is required." = "Slug доски обязателен.";
 "Board slug must be 1-64 lowercase letters, numbers, hyphens, or underscores." = "Slug доски должен содержать 1–64 строчные буквы, цифры, дефисы или подчеркивания.";
 "Board" = "Доска";
-"Icon" = "Иконка";
-"Color" = "Цвет";
-"Display metadata lives on the remote Hermes host." = "Отображаемые метаданные хранятся на удаленном хосте Hermes.";
 "Home Channels" = "Домашние каналы";
 "Gateway home subscriptions for this task." = "Подписки домашних каналов gateway для этой задачи.";
 "Check for Updates…" = "Проверить обновления…";
