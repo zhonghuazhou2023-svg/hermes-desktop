@@ -298,13 +298,15 @@ surface area and workflow, not about creating a second source of truth.
   Reads the real remote session store from `~/.hermes/state.db`, with
   full-text search across names, IDs, previews, and message content, match
   snippets, pinned sessions, cleaner metadata, readable transcripts, compact
-  tool-output summaries, in-app chat continuation, terminal resume,
-  refresh-on-entry behavior, and remote deletion.
+  tool-output summaries, in-app chat continuation, safer non-interactive
+  approval handling, terminal resume, refresh-on-entry behavior, and remote
+  deletion.
 - `Cron Jobs`
   Browses the real Hermes cron definitions on the host, with create, edit,
-  pause, resume, run-now, and delete actions, plus the details that matter when
-  you are actually running them: schedule, model, skills, delivery target, and
-  recent status.
+  pause, resume, run-now, and delete actions, including agent jobs and
+  script-only jobs that run host scripts without creating an agent turn. It
+  shows the details that matter when you are actually running them: schedule,
+  model, skills, script, workdir, delivery target, and recent status.
 - `Kanban`
   Opens the upstream Hermes Kanban workspace from the host-wide Kanban home:
   the default board at `~/.hermes/kanban.db`, plus additional boards under
@@ -425,9 +427,12 @@ It runs Hermes on the selected host over SSH.
 
 Starting a new chat uses the remote `hermes chat` path. Continuing a session
 uses `hermes --resume <session-id> chat`, with the selected Hermes profile
-preserved when one is active. If Hermes asks for command approval during a
-non-interactive turn, the app stops and tells you to retry that turn with
-auto-approve enabled or continue manually in Terminal.
+preserved when one is active. If Hermes requests command approval during a
+non-interactive chat turn, Hermes Desktop cannot collect a manual approval
+inside the chat. When Hermes can handle the denial and continue, the transcript
+shows Hermes' normal response. If the turn cannot continue usefully, the app
+shows an approval-needed message and lets you retry with auto-approve enabled
+or resume the session in Terminal to review the command yourself.
 
 ### Why do I still need SSH working in Terminal first?
 
@@ -464,11 +469,12 @@ source of truth.
   message-content search, match snippets, deletion, and refresh-on-entry
   behavior
 - [x] a session workbench with pinned sessions, readable transcripts, compact
-  tool-output summaries, in-app chat continuation, and terminal resume
+  tool-output summaries, in-app chat continuation, safer non-interactive
+  approval handling, and terminal resume
 - [x] a native Kanban workspace for upstream Hermes boards, including board
   selection, board creation and archive, task creation, status actions,
   assignment, dependency links, editable task metadata, comments, run/event
-  history, worker log visibility, and dispatcher nudging
+  history, recovery actions, worker log visibility, and dispatcher nudging
 - [x] a usage dashboard with aggregate token totals, top sessions, top models,
   trends, and host-wide multi-profile totals when available
 - [x] native skill workflows for discovering, inspecting, creating, and editing
@@ -476,7 +482,8 @@ source of truth.
   configured external discovery directories and local write precedence
 - [x] profile-aware host workflows aligned with Hermes Agent profiles on the
   same SSH target
-- [x] native cron job workflows for the canonical remote scheduler state
+- [x] native cron job workflows for the canonical remote scheduler state,
+  including agent jobs and script-only host jobs
 - [x] a real embedded SSH terminal with tabs, named theme presets, live color
   controls, and coherent multi-profile workspace behavior
 - [x] English, Simplified Chinese, and Russian localization resources packaged
@@ -521,7 +528,7 @@ To create the GitHub Releases archive:
 For release-candidate packaging, you can stamp an explicit version:
 
 ```bash
-HERMES_VERSION=0.7.0 ./scripts/package-github-release.sh
+HERMES_VERSION=0.7.1 ./scripts/package-github-release.sh
 ```
 
 Release artifacts:
