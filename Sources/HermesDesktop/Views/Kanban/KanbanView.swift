@@ -17,7 +17,7 @@ struct KanbanView: View {
     @State private var showArchiveBoardConfirmation = false
 
     var body: some View {
-        HermesPersistentHSplitView(layout: $splitLayout, detailMinWidth: 420) {
+        HermesCollapsibleHSplitView(layout: $splitLayout, detailMinWidth: 420) {
             primaryContent
         } detail: {
             detailContent

@@ -5,6 +5,12 @@ private let workbenchPrimaryColumnWidth: CGFloat = 460
 struct RootView: View {
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var appState: AppState
+    @SceneStorage("RootView.isWorkspaceSidebarCollapsed") private var isWorkspaceSidebarCollapsed = false
+    @State private var workspaceSplitLayout = HermesSplitLayout(
+        minPrimaryWidth: 160,
+        defaultPrimaryWidth: 188,
+        maxPrimaryWidth: 220
+    )
     @State private var sessionsSplitLayout = HermesSplitLayout(
         minPrimaryWidth: workbenchPrimaryColumnWidth,
         defaultPrimaryWidth: workbenchPrimaryColumnWidth
@@ -24,87 +30,169 @@ struct RootView: View {
     )
 
     var body: some View {
-        HSplitView {
-            List(selection: sectionSelection) {
-                if let activeConnection = appState.activeConnection {
-                    Section(L10n.string("Workspace")) {
-                        WorkspaceSidebarCard(connection: activeConnection)
+        rootContent
+            .toolbar {
+                ToolbarItemGroup(placement: .navigation) {
+                    HermesToolbarControlCluster {
+                        HermesCollapseToolbarButton(
+                            systemImage: "sidebar.left",
+                            isActive: isWorkspaceSidebarCollapsed,
+                            isEnabled: true,
+                            help: isWorkspaceSidebarCollapsed
+                                ? L10n.string("Show Workspace Sidebar")
+                                : L10n.string("Hide Workspace Sidebar")
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                workspaceSidebarSplitLayout.wrappedValue.isPrimaryCollapsed.toggle()
+                            }
+                        }
+
+                        HermesCollapseToolbarButton(
+                            systemImage: "rectangle.leftthird.inset.filled",
+                            isActive: currentWorkbenchPrimaryColumnCollapsed,
+                            isEnabled: currentWorkbenchPrimaryColumnLayout != nil,
+                            help: currentWorkbenchPrimaryColumnCollapsed
+                                ? L10n.string("Show Section Browser")
+                                : L10n.string("Hide Section Browser")
+                        ) {
+                            toggleCurrentWorkbenchPrimaryColumn()
+                        }
                     }
                 }
 
-                Section(L10n.string("Sections")) {
-                    ForEach(availableSections) { section in
-                        SidebarSectionRow(section: section)
-                            .tag(section)
+                ToolbarItem(placement: .principal) {
+                    HermesToolbarPrincipalTitle(title: "Hermes Desktop")
+                }
+
+                ToolbarItemGroup(placement: .automatic) {
+                    Button {
+                        Task {
+                            await appState.refreshCurrentSectionFromCommand()
+                        }
+                    } label: {
+                        Label(L10n.string("Refresh"), systemImage: "arrow.clockwise")
                     }
+                    .disabled(!appState.canRefreshCurrentSection)
+                    .help(L10n.string("Refresh Current Section"))
                 }
             }
-            .listStyle(.sidebar)
-            .frame(minWidth: 160, idealWidth: 188, maxWidth: 220)
+            .overlay(alignment: .bottom) {
+                if let statusMessage = appState.statusMessage {
+                    Text(statusMessage)
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.thinMaterial, in: Capsule())
+                        .padding()
+                }
+            }
+            .alert(item: $appState.activeAlert) { alert in
+                Alert(
+                    title: Text(alert.title),
+                    message: Text(alert.message),
+                    dismissButton: .default(Text(L10n.string("OK")))
+                )
+            }
+            .alert(L10n.string("Discard unsaved changes?"), isPresented: $appState.showDiscardChangesAlert) {
+                Button(L10n.string("Discard"), role: .destructive) {
+                    appState.discardChangesAndContinue()
+                }
+                Button(L10n.string("Stay"), role: .cancel) {
+                    appState.stayOnCurrentSection()
+                }
+            } message: {
+                Text(L10n.string("USER.md, MEMORY.md, or SOUL.md has unsaved edits."))
+            }
+            .sheet(item: $appState.availableUpdate) { update in
+                UpdateAvailableSheet(
+                    update: update,
+                    automaticallyChecksForUpdates: Binding(
+                        get: { appState.connectionStore.automaticallyChecksForUpdates },
+                        set: { appState.updateAutomaticUpdateChecks($0) }
+                    ),
+                    openRelease: {
+                        appState.noteOpenedRelease(for: update)
+                        openURL(update.htmlURL)
+                    },
+                    dismiss: {
+                        appState.dismissAvailableUpdate()
+                    }
+                )
+            }
+            .task {
+                await appState.checkForUpdatesAtLaunch()
+            }
+    }
 
+    @ViewBuilder
+    private var rootContent: some View {
+        HermesCollapsibleHSplitView(layout: workspaceSidebarSplitLayout, detailMinWidth: 0) {
+            workspaceSidebar
+        } detail: {
             detailView
                 .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(1)
                 .clipped()
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
-                Button {
-                    Task {
-                        await appState.refreshCurrentSectionFromCommand()
-                    }
-                } label: {
-                    Label(L10n.string("Refresh"), systemImage: "arrow.clockwise")
+    }
+
+    private var workspaceSidebar: some View {
+        List(selection: sectionSelection) {
+            if let activeConnection = appState.activeConnection {
+                Section(L10n.string("Workspace")) {
+                    WorkspaceSidebarCard(connection: activeConnection)
                 }
-                .disabled(!appState.canRefreshCurrentSection)
-                .help(L10n.string("Refresh Current Section"))
             }
-        }
-        .overlay(alignment: .bottom) {
-            if let statusMessage = appState.statusMessage {
-                Text(statusMessage)
-                    .font(.caption)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.thinMaterial, in: Capsule())
-                    .padding()
-            }
-        }
-        .alert(item: $appState.activeAlert) { alert in
-            Alert(
-                title: Text(alert.title),
-                message: Text(alert.message),
-                dismissButton: .default(Text(L10n.string("OK")))
-            )
-        }
-        .alert(L10n.string("Discard unsaved changes?"), isPresented: $appState.showDiscardChangesAlert) {
-            Button(L10n.string("Discard"), role: .destructive) {
-                appState.discardChangesAndContinue()
-            }
-            Button(L10n.string("Stay"), role: .cancel) {
-                appState.stayOnCurrentSection()
-            }
-        } message: {
-            Text(L10n.string("USER.md, MEMORY.md, or SOUL.md has unsaved edits."))
-        }
-        .sheet(item: $appState.availableUpdate) { update in
-            UpdateAvailableSheet(
-                update: update,
-                automaticallyChecksForUpdates: Binding(
-                    get: { appState.connectionStore.automaticallyChecksForUpdates },
-                    set: { appState.updateAutomaticUpdateChecks($0) }
-                ),
-                openRelease: {
-                    appState.noteOpenedRelease(for: update)
-                    openURL(update.htmlURL)
-                },
-                dismiss: {
-                    appState.dismissAvailableUpdate()
+
+            Section(L10n.string("Sections")) {
+                ForEach(availableSections) { section in
+                    SidebarSectionRow(section: section)
+                        .tag(section)
                 }
-            )
+            }
         }
-        .task {
-            await appState.checkForUpdatesAtLaunch()
+        .listStyle(.sidebar)
+        .frame(minWidth: 160, idealWidth: 188, maxWidth: 220)
+    }
+
+    private var workspaceSidebarSplitLayout: Binding<HermesSplitLayout> {
+        Binding {
+            var layout = workspaceSplitLayout
+            layout.isPrimaryCollapsed = isWorkspaceSidebarCollapsed
+            return layout
+        } set: { newValue in
+            workspaceSplitLayout = newValue
+            isWorkspaceSidebarCollapsed = newValue.isPrimaryCollapsed
+        }
+    }
+
+    private var currentWorkbenchPrimaryColumnLayout: Binding<HermesSplitLayout>? {
+        guard appState.activeConnection != nil else { return nil }
+
+        switch appState.selectedSection {
+        case .sessions:
+            return $sessionsSplitLayout
+        case .cronjobs:
+            return $cronJobsSplitLayout
+        case .kanban:
+            return $kanbanSplitLayout
+        case .files:
+            return $filesSplitLayout
+        case .skills:
+            return $skillsSplitLayout
+        case .connections, .overview, .usage, .terminal:
+            return nil
+        }
+    }
+
+    private var currentWorkbenchPrimaryColumnCollapsed: Bool {
+        currentWorkbenchPrimaryColumnLayout?.wrappedValue.isPrimaryCollapsed ?? false
+    }
+
+    private func toggleCurrentWorkbenchPrimaryColumn() {
+        guard let layout = currentWorkbenchPrimaryColumnLayout else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            layout.wrappedValue.isPrimaryCollapsed.toggle()
         }
     }
 
@@ -136,10 +224,18 @@ struct RootView: View {
             ConnectionsView()
         } else {
             ZStack {
-                SessionsView(splitLayout: $sessionsSplitLayout, isActive: appState.selectedSection == .sessions)
-                    .opacity(appState.selectedSection == .sessions ? 1 : 0)
-                    .allowsHitTesting(appState.selectedSection == .sessions)
-                    .accessibilityHidden(appState.selectedSection != .sessions)
+                SessionsView(
+                    splitLayout: $sessionsSplitLayout,
+                    isActive: appState.selectedSection == .sessions
+                )
+                .frame(
+                    maxWidth: appState.selectedSection == .sessions ? .infinity : 0,
+                    maxHeight: appState.selectedSection == .sessions ? .infinity : 0,
+                    alignment: .topLeading
+                )
+                .clipped()
+                .allowsHitTesting(appState.selectedSection == .sessions)
+                .accessibilityHidden(appState.selectedSection != .sessions)
 
                 if appState.selectedSection != .sessions {
                     nonSessionDetailContent

@@ -12,7 +12,7 @@ struct FilesView: View {
     @State private var showRemoveBookmarkAlert = false
 
     var body: some View {
-        HermesPersistentHSplitView(layout: $splitLayout, detailMinWidth: 460) {
+        HermesCollapsibleHSplitView(layout: $splitLayout, detailMinWidth: 460) {
             VStack(alignment: .leading, spacing: 18) {
                 HermesPageHeader(
                     title: "Files",

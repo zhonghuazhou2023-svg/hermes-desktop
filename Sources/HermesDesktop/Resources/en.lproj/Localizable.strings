@@ -821,3 +821,7 @@
 "Hermes Agent rejected a completion because the worker claimed cards that do not exist or were not created by that worker." = "Hermes Agent rejected a completion because the worker claimed cards that do not exist or were not created by that worker.";
 "Hermes Agent found task IDs in the completion text that do not resolve on the board." = "Hermes Agent found task IDs in the completion text that do not resolve on the board.";
 "Hermes Agent recorded warning events that may need recovery." = "Hermes Agent recorded warning events that may need recovery.";
+"Show Workspace Sidebar" = "Show Workspace Sidebar";
+"Hide Workspace Sidebar" = "Hide Workspace Sidebar";
+"Show Section Browser" = "Show Section Browser";
+"Hide Section Browser" = "Hide Section Browser";

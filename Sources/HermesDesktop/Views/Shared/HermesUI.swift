@@ -730,15 +730,18 @@ struct HermesSplitLayout: Equatable {
     let defaultPrimaryWidth: CGFloat
     let maxPrimaryWidth: CGFloat
     var primaryWidth: CGFloat?
+    var isPrimaryCollapsed: Bool
 
     init(
         minPrimaryWidth: CGFloat,
         defaultPrimaryWidth: CGFloat,
-        maxPrimaryWidth: CGFloat = 760
+        maxPrimaryWidth: CGFloat = 760,
+        isPrimaryCollapsed: Bool = false
     ) {
         self.minPrimaryWidth = minPrimaryWidth
         self.defaultPrimaryWidth = defaultPrimaryWidth
         self.maxPrimaryWidth = max(maxPrimaryWidth, minPrimaryWidth)
+        self.isPrimaryCollapsed = isPrimaryCollapsed
     }
 
     var preferredPrimaryWidth: CGFloat {
@@ -770,6 +773,124 @@ extension View {
             maxHeight: .infinity,
             alignment: .topLeading
         )
+    }
+}
+
+struct HermesCollapseToolbarButton: View {
+    let systemImage: String
+    let isActive: Bool
+    let isEnabled: Bool
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .medium))
+                .symbolVariant(isActive ? .fill : .none)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+                .background {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(isActive ? HermesTheme.selectedFill : .clear)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(isActive ? HermesTheme.selectedStroke : .clear, lineWidth: 1)
+                }
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(isActive ? Color.accentColor : Color.primary.opacity(isEnabled ? 0.82 : 0.32))
+        .disabled(!isEnabled)
+        .help(help)
+        .accessibilityLabel(Text(help))
+    }
+}
+
+struct HermesToolbarControlCluster<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            content
+        }
+    }
+}
+
+struct HermesToolbarPrincipalTitle: View {
+    let title: String
+
+    var body: some View {
+        Text(L10n.string(title))
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(.primary.opacity(0.96))
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+    }
+}
+
+struct HermesWindowTitleBarConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            applyConfiguration(from: view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            applyConfiguration(from: nsView)
+        }
+    }
+
+    private func applyConfiguration(from view: NSView) {
+        guard let window = view.window else { return }
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = false
+    }
+}
+
+struct HermesCollapsibleHSplitView<Primary: View, Detail: View>: View {
+    @Binding var layout: HermesSplitLayout
+    let detailMinWidth: CGFloat
+    let primary: Primary
+    let detail: Detail
+    private let collapseAnimation = Animation.easeInOut(duration: 0.18)
+
+    init(
+        layout: Binding<HermesSplitLayout>,
+        detailMinWidth: CGFloat,
+        @ViewBuilder primary: () -> Primary,
+        @ViewBuilder detail: () -> Detail
+    ) {
+        self._layout = layout
+        self.detailMinWidth = detailMinWidth
+        self.primary = primary()
+        self.detail = detail()
+    }
+
+    var body: some View {
+        ZStack {
+            if layout.isPrimaryCollapsed {
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .transition(.opacity)
+            } else {
+                HermesPersistentHSplitView(layout: $layout, detailMinWidth: detailMinWidth) {
+                    primary
+                } detail: {
+                    detail
+                }
+                .transition(.opacity)
+            }
+        }
+        .clipped()
+        .animation(collapseAnimation, value: layout.isPrimaryCollapsed)
     }
 }
 
@@ -817,7 +938,7 @@ struct HermesPersistentHSplitView<Primary: View, Detail: View>: NSViewRepresenta
         context.coordinator.layout = $layout
         context.coordinator.detailMinWidth = detailMinWidth
 
-        context.coordinator.restoreDividerPosition(in: splitView)
+        context.coordinator.applyLayout(in: splitView)
         return splitView
     }
 
@@ -826,7 +947,7 @@ struct HermesPersistentHSplitView<Primary: View, Detail: View>: NSViewRepresenta
         context.coordinator.detailHost?.rootView = detail
         context.coordinator.layout = $layout
         context.coordinator.detailMinWidth = detailMinWidth
-        context.coordinator.restoreDividerPosition(in: splitView)
+        context.coordinator.applyLayout(in: splitView)
     }
 
     @MainActor
@@ -838,6 +959,38 @@ struct HermesPersistentHSplitView<Primary: View, Detail: View>: NSViewRepresenta
         private var isRestoringDivider = false
         private var hasRestoredDivider = false
         private var autoConstrainedPrimaryWidth: CGFloat?
+
+        func applyLayout(in splitView: NSSplitView) {
+            guard splitView.subviews.count > 1, let layout else { return }
+
+            if layout.wrappedValue.isPrimaryCollapsed {
+                collapsePrimary(in: splitView)
+                hasRestoredDivider = true
+                autoConstrainedPrimaryWidth = nil
+                return
+            }
+
+            if primaryHost?.isHidden == true {
+                isRestoringDivider = true
+                primaryHost?.isHidden = false
+                splitView.adjustSubviews()
+                splitView.needsDisplay = true
+                isRestoringDivider = false
+            }
+
+            restoreDividerPosition(in: splitView)
+        }
+
+        private func collapsePrimary(in splitView: NSSplitView) {
+            guard splitView.subviews.count > 1 else { return }
+
+            isRestoringDivider = true
+            primaryHost?.isHidden = true
+            splitView.setPosition(0, ofDividerAt: 0)
+            splitView.adjustSubviews()
+            splitView.needsDisplay = true
+            isRestoringDivider = false
+        }
 
         func restoreDividerPosition(in splitView: NSSplitView) {
             guard splitView.subviews.count > 1, let layout else { return }
@@ -872,6 +1025,7 @@ struct HermesPersistentHSplitView<Primary: View, Detail: View>: NSViewRepresenta
                   hasRestoredDivider,
                   let splitView = notification.object as? NSSplitView,
                   let layout,
+                  !layout.wrappedValue.isPrimaryCollapsed,
                   !splitView.subviews.isEmpty else {
                 return
             }
@@ -913,6 +1067,10 @@ struct HermesPersistentHSplitView<Primary: View, Detail: View>: NSViewRepresenta
 
         func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
             view === detailHost
+        }
+
+        func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
+            layout?.wrappedValue.isPrimaryCollapsed == true
         }
 
         private func constrainedPrimaryWidth(_ width: CGFloat, in splitView: NSSplitView) -> CGFloat {
