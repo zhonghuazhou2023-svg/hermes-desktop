@@ -228,12 +228,7 @@ struct RootView: View {
                     splitLayout: $sessionsSplitLayout,
                     isActive: appState.selectedSection == .sessions
                 )
-                .frame(
-                    maxWidth: appState.selectedSection == .sessions ? .infinity : 0,
-                    maxHeight: appState.selectedSection == .sessions ? .infinity : 0,
-                    alignment: .topLeading
-                )
-                .clipped()
+                .opacity(appState.selectedSection == .sessions ? 1 : 0)
                 .allowsHitTesting(appState.selectedSection == .sessions)
                 .accessibilityHidden(appState.selectedSection != .sessions)
 
