@@ -299,31 +299,36 @@ surface area and workflow, not about creating a second source of truth.
   full-text search across names, IDs, previews, and message content, match
   snippets, pinned sessions, cleaner metadata, readable transcripts, compact
   tool-output summaries, in-app chat continuation, safer non-interactive
-  approval handling, terminal resume, refresh-on-entry behavior, and remote
-  deletion.
+  approval handling, preserved transcript scroll position when moving between
+  Sessions and Terminal, terminal resume, refresh-on-entry behavior, and
+  remote deletion.
 - `Cron Jobs`
   Browses the real Hermes cron definitions on the host, with create, edit,
   pause, resume, run-now, and delete actions, including agent jobs and
   script-only jobs that run host scripts without creating an agent turn. It
   shows the details that matter when you are actually running them: schedule,
-  model, skills, script, workdir, delivery target, and recent status.
+  model, skills, script, workdir, delivery target, and recent status,
+  including the newer all-connected-channels delivery option when the host
+  supports it.
 - `Kanban`
   Opens the upstream Hermes Kanban workspace from the host-wide Kanban home:
   the default board at `~/.hermes/kanban.db`, plus additional boards under
   `~/.hermes/kanban/boards/` when supported. It includes board selection,
   board creation and archive, task creation, search, filters, assignment,
-  dependency links, editable task metadata, comments, block, unblock, complete,
-  archive, delete, run and event history, worker log tailing, and dispatcher
-  nudging when the host supports it.
+  dependency links, editable task metadata, triage-to-todo specify flows,
+  per-task retry limits, comments, block, unblock, complete, archive, delete,
+  run and event history, worker log tailing, and dispatcher nudging when the
+  host supports it.
 - `Usage`
   Shows aggregate input and output token totals, top sessions, top models,
   recent session trends, and when available, a host-wide profile breakdown.
 - `Skills`
   Discovers and reads remote `SKILL.md` files from the local Hermes skills
   store plus configured `skills.external_dirs`, while keeping skill creation
-  and editing anchored to `~/.hermes/skills/`, with quick filtering,
-  companion folder awareness, optional folder scaffolding, and remote
-  conflict checks before save.
+  and editing anchored to `~/.hermes/skills/`, with quick filtering across
+  names, categories, tags, related skills, and platform metadata, companion
+  folder awareness, optional folder scaffolding, and remote conflict checks
+  before save.
 - `Terminal`
   Opens the real SSH shell inside the app, with multiple tabs, named theme
   presets, live background and text color tuning, and room for a genuinely
@@ -470,7 +475,8 @@ source of truth.
   behavior
 - [x] a session workbench with pinned sessions, readable transcripts, compact
   tool-output summaries, in-app chat continuation, safer non-interactive
-  approval handling, and terminal resume
+  approval handling, preserved transcript position across section switches,
+  and terminal resume
 - [x] a native Kanban workspace for upstream Hermes boards, including board
   selection, board creation and archive, task creation, status actions,
   assignment, dependency links, editable task metadata, comments, run/event
@@ -528,7 +534,7 @@ To create the GitHub Releases archive:
 For release-candidate packaging, you can stamp an explicit version:
 
 ```bash
-HERMES_VERSION=0.7.1 ./scripts/package-github-release.sh
+HERMES_VERSION=0.7.2 ./scripts/package-github-release.sh
 ```
 
 Release artifacts:
