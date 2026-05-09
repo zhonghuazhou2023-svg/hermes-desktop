@@ -491,17 +491,25 @@ final class SkillBrowserService: @unchecked Sendable {
                     tags = parse_key_value(hermes_lines, "tags")
                 if related_skills is None and hermes_lines:
                     related_skills = parse_key_value(hermes_lines, "related_skills")
+                platforms = parse_key_value(lines, "platforms")
+                if platforms is None and hermes_lines:
+                    platforms = parse_key_value(hermes_lines, "platforms")
 
                 if tags is not None:
                     metadata["tags"] = tags
                 if related_skills is not None:
                     metadata["related_skills"] = related_skills
+                if platforms is not None:
+                    metadata["platforms"] = platforms
 
             result = {}
             for key in ("name", "description", "version"):
                 value = parse_key_value(lines, key)
                 if value is not None and not isinstance(value, list):
                     result[key] = value
+            platforms = parse_key_value(lines, "platforms")
+            if platforms is not None:
+                result["platforms"] = platforms
 
             if metadata:
                 result["metadata"] = metadata
@@ -542,10 +550,17 @@ final class SkillBrowserService: @unchecked Sendable {
             if related_skills is None:
                 related_skills = hermes_metadata.get("related_skills")
 
+            platforms = data.get("platforms")
+            if platforms is None:
+                platforms = metadata.get("platforms")
+            if platforms is None:
+                platforms = hermes_metadata.get("platforms")
+
             return {
                 "name": normalize_text(data.get("name")),
                 "description": compact_text(data.get("description")),
                 "version": normalize_text(data.get("version")),
+                "platforms": normalize_text_list(platforms),
                 "tags": normalize_text_list(tags),
                 "related_skills": normalize_text_list(related_skills),
             }
@@ -651,6 +666,7 @@ final class SkillBrowserService: @unchecked Sendable {
                 "name": parsed["name"],
                 "description": parsed["description"],
                 "version": parsed["version"],
+                "platforms": parsed["platforms"],
                 "tags": parsed["tags"],
                 "related_skills": parsed["related_skills"],
                 "has_references": flags["has_references"],

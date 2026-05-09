@@ -40,6 +40,7 @@ struct KanbanModelsTests {
                 "worker_pid": null,
                 "last_spawn_error": "missing keychain",
                 "max_runtime_seconds": 3600,
+                "max_retries": 3,
                 "last_heartbeat_at": null,
                 "current_run_id": null,
                 "parent_ids": ["t_parent"],
@@ -97,6 +98,7 @@ struct KanbanModelsTests {
         #expect(board.tasks[0].status == .ready)
         #expect(board.tasks[0].workspaceKind == .scratch)
         #expect(board.tasks[0].priorityLabel == "P+3")
+        #expect(board.tasks[0].maxRetries == 3)
         #expect(board.tasks[0].progressLabel == "1/3 done")
         #expect(board.tasks[0].hasActiveWarnings)
         #expect(board.tasks[0].warnings?.includesBlockedCompletion == true)
@@ -134,6 +136,7 @@ struct KanbanModelsTests {
               "worker_pid": null,
               "last_spawn_error": null,
               "max_runtime_seconds": null,
+              "max_retries": null,
               "last_heartbeat_at": null,
               "current_run_id": null,
               "parent_ids": [],
@@ -291,6 +294,7 @@ struct KanbanModelsTests {
         draft.assignee = " release "
         draft.tenant = " desktop "
         draft.priority = 42
+        draft.maxRetriesText = " 3 "
         draft.skillsText = "release-notes, docs, "
         draft.parentIDsText = " t_parent_a, t_parent_b\n t_parent_a "
 
@@ -300,8 +304,12 @@ struct KanbanModelsTests {
         #expect(draft.normalizedAssignee == "release")
         #expect(draft.normalizedTenant == "desktop")
         #expect(draft.priority == 42)
+        #expect(draft.normalizedMaxRetries == 3)
         #expect(draft.skills == ["release-notes", "docs"])
         #expect(draft.parentIDs == ["t_parent_a", "t_parent_b"])
+
+        draft.maxRetriesText = "0"
+        #expect(draft.validationError == "Max retries must be a whole number greater than 0.")
     }
 
     @Test
@@ -332,11 +340,16 @@ struct KanbanModelsTests {
         #expect(ready.canBlock)
         #expect(ready.canComplete)
         #expect(!ready.canUnblock)
+        #expect(!ready.canSpecify)
 
         let todo = makeTask(status: .todo)
         #expect(!todo.canBlock)
         #expect(!todo.canComplete)
         #expect(!todo.canUnblock)
+        #expect(!todo.canSpecify)
+
+        let triage = makeTask(status: .triage)
+        #expect(triage.canSpecify)
 
         let blocked = makeTask(status: .blocked)
         #expect(!blocked.canBlock)
@@ -365,6 +378,7 @@ struct KanbanModelsTests {
             workerPID: nil,
             lastSpawnError: nil,
             maxRuntimeSeconds: nil,
+            maxRetries: nil,
             lastHeartbeatAt: nil,
             currentRunID: nil,
             parentIDs: [],

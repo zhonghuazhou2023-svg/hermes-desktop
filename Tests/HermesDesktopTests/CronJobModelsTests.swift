@@ -94,6 +94,15 @@ struct CronJobModelsTests {
         #expect(!CronJobState.failed.isActive)
     }
 
+    @Test
+    func deliveryPresetRecognizesAllChannelsValue() {
+        #expect(CronDeliveryPreset.from(deliveryTarget: "all").preset == .all)
+
+        var draft = CronJobDraft()
+        draft.deliveryPreset = .all
+        #expect(draft.normalizedDeliveryTarget == "all")
+    }
+
     private func makeJob(
         name: String,
         prompt: String,

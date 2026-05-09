@@ -143,6 +143,7 @@ final class KanbanBrowserService: @unchecked Sendable {
                 text: nil,
                 result: nil,
                 maxSpawn: nil,
+                maxRetries: draft.normalizedMaxRetries,
                 parentIDs: draft.parentIDs
             )
         )
@@ -268,6 +269,29 @@ final class KanbanBrowserService: @unchecked Sendable {
                 title: nil,
                 body: nil,
                 assignee: assignee,
+                priority: nil,
+                tenant: nil,
+                skills: nil,
+                triage: nil,
+                text: nil,
+                result: nil,
+                maxSpawn: nil
+            )
+        )
+    }
+
+    func specifyTask(connection: ConnectionProfile, boardSlug: String, taskID: String) async throws {
+        _ = try await performMutation(
+            connection: connection,
+            request: KanbanMutationRequest(
+                kanbanHome: connection.remoteKanbanHomePath,
+                boardSlug: boardSlug,
+                author: connection.resolvedHermesProfileName,
+                action: "specify",
+                taskID: taskID,
+                title: nil,
+                body: nil,
+                assignee: nil,
                 priority: nil,
                 tenant: nil,
                 skills: nil,
@@ -857,6 +881,11 @@ final class KanbanBrowserService: @unchecked Sendable {
                     parent_ids = normalized_payload_list("parent_ids")
                     if parent_ids and not supports_keyword(kb.create_task, "parents"):
                         fail("This Hermes Agent build does not support Kanban parent links at task creation. Run `hermes update` on the host.")
+                    max_retries = int_value(payload.get("max_retries"))
+                    if max_retries is not None and max_retries < 1:
+                        fail("Max retries must be a whole number greater than 0.")
+                    if max_retries is not None and not supports_keyword(kb.create_task, "max_retries"):
+                        fail("This Hermes Agent build does not support per-task retry limits. Run `hermes update` on the host.")
                     kwargs = {
                         "title": title,
                         "body": normalize_text(payload.get("body")),
@@ -869,6 +898,8 @@ final class KanbanBrowserService: @unchecked Sendable {
                     }
                     if supports_keyword(kb.create_task, "parents"):
                         kwargs["parents"] = parent_ids
+                    if max_retries is not None:
+                        kwargs["max_retries"] = max_retries
                     created_id = kb.create_task(conn, **kwargs)
                     return ("Kanban task created.", created_id, None)
 
@@ -899,6 +930,11 @@ final class KanbanBrowserService: @unchecked Sendable {
                     if not kb.assign_task(conn, task_id, assignee):
                         fail(f"No such Kanban task: {task_id}")
                     return ("Task assigned.", task_id, None)
+
+                if action == "specify":
+                    # Specify relies on auxiliary-client bootstrap that the real Hermes CLI
+                    # configures more reliably than our embedded Python bridge.
+                    raise ImportError("Use CLI specify path for reliable auxiliary-client bootstrap.")
 
                 if action == "reclaim":
                     if not hasattr(kb, "reclaim_task"):
@@ -1019,6 +1055,11 @@ final class KanbanBrowserService: @unchecked Sendable {
                 priority = int(payload.get("priority") or 0)
                 if priority:
                     args.extend(["--priority", str(priority)])
+                max_retries = int_value(payload.get("max_retries"))
+                if max_retries is not None:
+                    if max_retries < 1:
+                        fail("Max retries must be a whole number greater than 0.")
+                    args.extend(["--max-retries", str(max_retries)])
                 if bool(payload.get("triage")):
                     args.append("--triage")
                 for skill in payload.get("skills") or []:
@@ -1095,6 +1136,15 @@ final class KanbanBrowserService: @unchecked Sendable {
                 assignee = normalize_text(payload.get("assignee")) or "none"
                 run_hermes_cli(kanban_cli_args(board_slug, ["assign", task_id, assignee]))
                 return ("Task assigned.", task_id, None)
+
+            if action == "specify":
+                data = run_hermes_cli(
+                    kanban_cli_args(board_slug, ["specify", task_id, "--author", author, "--json"]),
+                    expect_json=True,
+                )
+                if not bool(data.get("ok")):
+                    fail(normalize_text(data.get("reason")) or f"Cannot specify Kanban task: {task_id}")
+                return ("Task specified.", normalize_text(data.get("task_id")) or task_id, None)
 
             if action == "reclaim":
                 args = kanban_cli_args(board_slug, ["reclaim", task_id])
@@ -1469,6 +1519,7 @@ final class KanbanBrowserService: @unchecked Sendable {
             env = os.environ.copy()
             env["HERMES_HOME"] = str(kanban_home_path())
             env["HERMES_KANBAN_HOME"] = str(kanban_home_path())
+            cli_profile = normalize_text(payload.get("author"))
             path_entries = [
                 str(home / ".local" / "bin"),
                 str(home / ".hermes" / "hermes-agent" / "venv" / "bin"),
@@ -1478,8 +1529,15 @@ final class KanbanBrowserService: @unchecked Sendable {
                 env.get("PATH", ""),
             ]
             env["PATH"] = os.pathsep.join([entry for entry in path_entries if entry])
+            command = [hermes_binary]
+            if cli_profile and cli_profile != "default":
+                # Keep Kanban rooted at the shared Hermes home, but let the
+                # real CLI resolve profile-scoped config (auxiliary models,
+                # provider keys, etc.) for the active Desktop profile.
+                command.extend(["--profile", cli_profile])
+            command.extend(list(args))
             completed = subprocess.run(
-                [hermes_binary] + list(args),
+                command,
                 capture_output=True,
                 text=True,
                 env=env,
@@ -1841,6 +1899,7 @@ final class KanbanBrowserService: @unchecked Sendable {
                 "worker_pid": int_value(getattr(task, "worker_pid", None)),
                 "last_spawn_error": getattr(task, "last_spawn_error", None),
                 "max_runtime_seconds": int_value(getattr(task, "max_runtime_seconds", None)),
+                "max_retries": int_value(getattr(task, "max_retries", None)),
                 "last_heartbeat_at": int_value(getattr(task, "last_heartbeat_at", None)),
                 "current_run_id": int_value(getattr(task, "current_run_id", None)),
                 "parent_ids": parent_ids,
@@ -1878,6 +1937,7 @@ final class KanbanBrowserService: @unchecked Sendable {
                 "worker_pid": int_value(get("worker_pid")),
                 "last_spawn_error": get("last_spawn_error"),
                 "max_runtime_seconds": int_value(get("max_runtime_seconds")),
+                "max_retries": int_value(get("max_retries")),
                 "last_heartbeat_at": int_value(get("last_heartbeat_at")),
                 "current_run_id": int_value(get("current_run_id")),
                 "parent_ids": link_ids(conn, task_id, parents=True) if conn else [],
@@ -2391,6 +2451,7 @@ private struct KanbanMutationRequest: Encodable {
     let text: String?
     let result: String?
     let maxSpawn: Int?
+    var maxRetries: Int? = nil
     var parentIDs: [String]? = nil
     var childIDs: [String]? = nil
     var summary: String? = nil
@@ -2413,6 +2474,7 @@ private struct KanbanMutationRequest: Encodable {
         case text
         case result
         case maxSpawn = "max_spawn"
+        case maxRetries = "max_retries"
         case parentIDs = "parent_ids"
         case childIDs = "child_ids"
         case summary

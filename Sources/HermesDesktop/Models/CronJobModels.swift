@@ -412,6 +412,7 @@ enum CronIntervalUnit: String, CaseIterable, Identifiable {
 enum CronDeliveryPreset: String, CaseIterable, Identifiable {
     case local
     case origin
+    case all
     case telegram
     case discord
     case slack
@@ -427,6 +428,8 @@ enum CronDeliveryPreset: String, CaseIterable, Identifiable {
             return "Local Only"
         case .origin:
             return "Origin Chat"
+        case .all:
+            return "All Connected Channels"
         case .telegram:
             return "Telegram Home"
         case .discord:
@@ -448,6 +451,8 @@ enum CronDeliveryPreset: String, CaseIterable, Identifiable {
             return "local"
         case .origin:
             return "origin"
+        case .all:
+            return "all"
         case .telegram:
             return "telegram"
         case .discord:
@@ -474,6 +479,8 @@ enum CronDeliveryPreset: String, CaseIterable, Identifiable {
             return (.local, "")
         case "origin":
             return (.origin, "")
+        case "all":
+            return (.all, "")
         case "telegram":
             return (.telegram, "")
         case "discord":

@@ -480,6 +480,9 @@ struct KanbanView: View {
                     isCreatingBoard = false
                     isCreatingTask = true
                 },
+                onSpecify: { taskID in
+                    await appState.specifyKanbanTask(taskID: taskID)
+                },
                 onAssign: { taskID, assignee in
                     await appState.assignKanbanTask(taskID: taskID, assignee: assignee)
                 },
@@ -704,6 +707,7 @@ private enum KanbanFilterOption: Hashable {
 }
 
 private enum KanbanActionKind: Hashable {
+    case specify
     case details
     case parents
     case children
@@ -1214,10 +1218,21 @@ private struct KanbanTaskEditorView: View {
                                 }
                             }
 
-                            Toggle(L10n.string("Start in triage"), isOn: $draft.startsInTriage)
-                                .toggleStyle(.checkbox)
-                                .padding(.top, 20)
+                            KanbanFormField(label: "Max retries") {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    TextField(L10n.string("board default"), text: $draft.maxRetriesText)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 120)
+
+                                    Text(L10n.string("Leave empty to inherit the board failure limit. Set a value above 0 to override it for this task."))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
+
+                        Toggle(L10n.string("Start in triage"), isOn: $draft.startsInTriage)
+                            .toggleStyle(.checkbox)
 
                         KanbanFormField(label: "Skills") {
                             TextField(L10n.string("deploy-check, release-notes"), text: $draft.skillsText)
@@ -1246,6 +1261,7 @@ private struct KanbanTaskDetailView: View {
     let operationInFlight: Bool
     let assignees: [String]
     let onCreate: () -> Void
+    let onSpecify: (String) async -> Void
     let onAssign: (String, String?) async -> Void
     let onUpdateFields: (String, String, String, Int, [String]) async -> Void
     let onSetParents: (String, [String]) async -> Void
@@ -1446,6 +1462,15 @@ private struct KanbanTaskDetailView: View {
             .disabled(operationInFlight)
         }
 
+        if task.canSpecify {
+            Button(L10n.string("Specify")) {
+                toggleAction(.specify)
+            }
+            .buttonStyle(.borderedProminent)
+            .fixedSize(horizontal: true, vertical: false)
+            .disabled(operationInFlight)
+        }
+
         if task.canComplete {
             if task.status == .blocked {
                 Button(L10n.string("Complete")) {
@@ -1545,6 +1570,12 @@ private struct KanbanTaskDetailView: View {
                 isMonospaced: true
             ),
             HermesInspectorField(
+                id: "max-retries",
+                label: "Max retries",
+                value: task.maxRetries.map(String.init) ?? L10n.string("Board default"),
+                isMonospaced: task.maxRetries != nil
+            ),
+            HermesInspectorField(
                 id: "workspace",
                 label: "Workspace",
                 value: L10n.string(task.workspaceKind.displayTitle)
@@ -1629,6 +1660,34 @@ private struct KanbanTaskDetailView: View {
             subtitle: nil
         ) {
             VStack(alignment: .leading, spacing: 0) {
+                if task.canSpecify {
+                    KanbanActionDisclosureRow(
+                        title: "Specify",
+                        summary: "Promote this triage idea into a concrete todo",
+                        systemImage: "sparkles.rectangle.stack",
+                        isExpanded: expandedAction == .specify,
+                        isDisabled: operationInFlight,
+                        onToggle: { toggleAction(.specify) }
+                    ) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(L10n.string("Hermes may refine the title and body before moving this task from Triage to Todo."))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+
+                            Button(L10n.string("Specify Task")) {
+                                Task {
+                                    await onSpecify(task.id)
+                                    expandedAction = nil
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(operationInFlight)
+                        }
+                    }
+
+                    KanbanActionDivider()
+                }
+
                 KanbanActionDisclosureRow(
                     title: "Details",
                     summary: "Edit body, tenant, priority, and skills",

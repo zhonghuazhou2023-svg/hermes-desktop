@@ -1822,6 +1822,16 @@ final class AppState: ObservableObject {
         }
     }
 
+    func specifyKanbanTask(taskID: String) async {
+        await operateOnKanbanTask(
+            taskID: taskID,
+            successMessage: "Kanban task specified",
+            failureMessage: "Unable to specify Kanban task"
+        ) { profile, boardSlug in
+            try await kanbanBrowserService.specifyTask(connection: profile, boardSlug: boardSlug, taskID: taskID)
+        }
+    }
+
     func blockKanbanTask(taskID: String, reason: String?) async {
         await operateOnKanbanTask(
             taskID: taskID,

@@ -29,7 +29,7 @@ struct SkillDetailView: View {
                         }
                     }
 
-                    if !detail.tags.isEmpty || !detail.relatedSkills.isEmpty || !detail.featureBadges.isEmpty {
+                    if !detail.platforms.isEmpty || !detail.tags.isEmpty || !detail.relatedSkills.isEmpty || !detail.featureBadges.isEmpty {
                         metadataPanel(detail)
                     }
 
@@ -200,6 +200,16 @@ struct SkillDetailView: View {
             subtitle: "Optional frontmatter fields and companion directories discovered for this skill."
         ) {
             VStack(alignment: .leading, spacing: 18) {
+                if !detail.platforms.isEmpty {
+                    SkillMetadataSection(title: "Platforms") {
+                        SkillMetadataBadgeGroup(
+                            values: detail.platforms,
+                            tint: .mint,
+                            monospaced: true
+                        )
+                    }
+                }
+
                 if !detail.tags.isEmpty {
                     SkillMetadataSection(title: "Tags") {
                         SkillMetadataBadgeGroup(values: detail.tags, tint: .accentColor)

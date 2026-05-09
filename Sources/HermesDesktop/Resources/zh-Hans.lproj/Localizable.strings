@@ -825,3 +825,15 @@
 "Hide Workspace Sidebar" = "隐藏工作区侧边栏";
 "Show Section Browser" = "显示分区浏览器";
 "Hide Section Browser" = "隐藏分区浏览器";
+"All Connected Channels" = "All Connected Channels";
+"Board default" = "Board default";
+"Hermes may refine the title and body before moving this task from Triage to Todo." = "Hermes may refine the title and body before moving this task from Triage to Todo.";
+"Kanban task specified" = "Kanban task specified";
+"Leave empty to inherit the board failure limit. Set a value above 0 to override it for this task." = "Leave empty to inherit the board failure limit. Set a value above 0 to override it for this task.";
+"Max retries" = "Max retries";
+"Platforms" = "Platforms";
+"Promote this triage idea into a concrete todo" = "Promote this triage idea into a concrete todo";
+"Specify" = "Specify";
+"Specify Task" = "Specify Task";
+"Unable to specify Kanban task" = "Unable to specify Kanban task";
+"board default" = "board default";

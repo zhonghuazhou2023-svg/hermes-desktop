@@ -251,6 +251,7 @@ struct KanbanTask: Codable, Identifiable, Hashable, Sendable, TitleIdentifiable 
     let workerPID: Int?
     let lastSpawnError: String?
     let maxRuntimeSeconds: Int?
+    let maxRetries: Int?
     let lastHeartbeatAt: Int?
     let currentRunID: Int?
     let parentIDs: [String]
@@ -282,6 +283,7 @@ struct KanbanTask: Codable, Identifiable, Hashable, Sendable, TitleIdentifiable 
         case workerPID = "worker_pid"
         case lastSpawnError = "last_spawn_error"
         case maxRuntimeSeconds = "max_runtime_seconds"
+        case maxRetries = "max_retries"
         case lastHeartbeatAt = "last_heartbeat_at"
         case currentRunID = "current_run_id"
         case parentIDs = "parent_ids"
@@ -314,6 +316,7 @@ struct KanbanTask: Codable, Identifiable, Hashable, Sendable, TitleIdentifiable 
         workerPID: Int?,
         lastSpawnError: String?,
         maxRuntimeSeconds: Int?,
+        maxRetries: Int?,
         lastHeartbeatAt: Int?,
         currentRunID: Int?,
         parentIDs: [String],
@@ -344,6 +347,7 @@ struct KanbanTask: Codable, Identifiable, Hashable, Sendable, TitleIdentifiable 
         self.workerPID = workerPID
         self.lastSpawnError = lastSpawnError
         self.maxRuntimeSeconds = maxRuntimeSeconds
+        self.maxRetries = maxRetries
         self.lastHeartbeatAt = lastHeartbeatAt
         self.currentRunID = currentRunID
         self.parentIDs = parentIDs
@@ -377,6 +381,7 @@ struct KanbanTask: Codable, Identifiable, Hashable, Sendable, TitleIdentifiable 
         workerPID = try container.decodeIfPresent(Int.self, forKey: .workerPID)
         lastSpawnError = try container.decodeIfPresent(String.self, forKey: .lastSpawnError)
         maxRuntimeSeconds = try container.decodeIfPresent(Int.self, forKey: .maxRuntimeSeconds)
+        maxRetries = try container.decodeIfPresent(Int.self, forKey: .maxRetries)
         lastHeartbeatAt = try container.decodeIfPresent(Int.self, forKey: .lastHeartbeatAt)
         currentRunID = try container.decodeIfPresent(Int.self, forKey: .currentRunID)
         parentIDs = try container.decodeIfPresent([String].self, forKey: .parentIDs) ?? []
@@ -437,6 +442,10 @@ struct KanbanTask: Codable, Identifiable, Hashable, Sendable, TitleIdentifiable 
 
     var canUnblock: Bool {
         status == .blocked
+    }
+
+    var canSpecify: Bool {
+        status == .triage
     }
 
     var priorityLabel: String {
@@ -1000,6 +1009,7 @@ struct KanbanTaskDraft: Equatable {
     var body = ""
     var assignee = ""
     var priority = 0
+    var maxRetriesText = ""
     var tenant = ""
     var skillsText = ""
     var parentIDsText = ""
@@ -1024,6 +1034,12 @@ struct KanbanTaskDraft: Equatable {
         return value.isEmpty ? nil : value
     }
 
+    var normalizedMaxRetries: Int? {
+        let value = maxRetriesText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        return Int(value)
+    }
+
     var skills: [String] {
         Self.normalizedCommaList(skillsText)
     }
@@ -1035,6 +1051,12 @@ struct KanbanTaskDraft: Equatable {
     var validationError: String? {
         if normalizedTitle.isEmpty {
             return "Task title is required."
+        }
+        let trimmedMaxRetries = maxRetriesText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedMaxRetries.isEmpty {
+            guard let maxRetries = Int(trimmedMaxRetries), maxRetries > 0 else {
+                return "Max retries must be a whole number greater than 0."
+            }
         }
         return nil
     }
