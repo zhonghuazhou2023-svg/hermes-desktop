@@ -19,8 +19,31 @@ The release packaging flow in this repo is script-based:
 
 - `scripts/build-macos-app.sh` builds the app bundle, ad-hoc signs it, and
   verifies the resulting bundle with `codesign --verify --deep --strict`
-- `scripts/package-github-release.sh` builds the app, zips it, and creates a
-  SHA-256 checksum file for the zip
+- `scripts/package-github-release.sh` builds the app, zips it, creates a
+  SHA-256 checksum file for the zip, and emits a small JSON manifest for the
+  release artifact
+- `scripts/verify-release.sh` checks the packaged zip against that manifest,
+  verifies the checksum, extracts the app bundle, and validates basic bundle
+  expectations plus `codesign --verify --deep --strict`
+
+## Release Manifest
+
+Each packaged release now includes `HermesDesktop.app.zip.manifest.json`.
+
+The manifest is intentionally small and stable. It records:
+
+- the release zip file name
+- the SHA-256 of the zip
+- the zip size in bytes
+- the bundled app name
+- the bundle identifier
+- the bundle version and build number
+- the minimum supported macOS version
+- the executable name
+- the executable architectures present in the shipped app
+
+This manifest is meant to make the package easier to inspect and verify. It is
+not a signature, attestation, or notarization substitute.
 
 ## What Ad-Hoc Signing Means Here
 
@@ -38,7 +61,7 @@ that Apple cannot verify the app for malware.
 
 ## What The Published Checksum Proves
 
-Each release zip includes a SHA-256 checksum.
+Each release zip includes a SHA-256 checksum and a small JSON manifest.
 
 Comparing your local download against that checksum is useful because it lets
 you confirm your copy matches the release asset you downloaded.
@@ -61,6 +84,15 @@ shasum -a 256 HermesDesktop.app.zip
 ```
 
 Compare the output with the checksum published in the GitHub Release.
+
+If you want the repo to perform the same local verification flow used in CI,
+run this from a checkout of the repository:
+
+```bash
+./scripts/verify-release.sh \
+  /path/to/HermesDesktop.app.zip \
+  /path/to/HermesDesktop.app.zip.manifest.json
+```
 
 After extracting and moving the app into place:
 
@@ -120,4 +152,6 @@ implementation. Until then, the correct description is simple:
 - public releases are ad-hoc signed
 - public releases are not notarized
 - published checksums help verify the downloaded zip
+- the release manifest makes the artifact metadata easier to inspect and
+  compare
 - building from source is the clearest trust path for cautious users

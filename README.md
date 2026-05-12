@@ -179,8 +179,9 @@ Do not disable Gatekeeper or run `sudo` commands to install Hermes Desktop.
 
 ## Verify The Download
 
-Each GitHub Release includes a SHA-256 checksum for `HermesDesktop.app.zip`.
-Compare it with the value printed locally after downloading:
+Each GitHub Release includes a SHA-256 checksum and a small JSON manifest for
+`HermesDesktop.app.zip`. Compare the checksum with the value printed locally
+after downloading:
 
 ```bash
 shasum -a 256 HermesDesktop.app.zip
@@ -190,6 +191,15 @@ After installing:
 
 ```bash
 codesign --verify --deep --strict /Applications/HermesDesktop.app
+```
+
+If you want to verify the release zip against the published manifest from a
+repo checkout:
+
+```bash
+./scripts/verify-release.sh \
+  /path/to/HermesDesktop.app.zip \
+  /path/to/HermesDesktop.app.zip.manifest.json
 ```
 
 For the full explanation of what those checks do and do not establish, see
@@ -573,3 +583,11 @@ Release artifacts:
 - `dist/HermesDesktop.app.zip` as a universal macOS archive for Apple Silicon
   and Intel Macs
 - `dist/HermesDesktop.app.zip.sha256` for checksum verification
+- `dist/HermesDesktop.app.zip.manifest.json` for machine-readable release
+  metadata
+
+To verify the locally packaged release artifact:
+
+```bash
+./scripts/verify-release.sh
+```
