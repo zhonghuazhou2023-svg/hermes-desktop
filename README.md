@@ -107,6 +107,19 @@ The boundary is simple: browser for administration, Mac app for host work.
 Hermes Desktop stays valuable because it does not create another backend around
 Hermes. It gives the existing SSH path a native surface.
 
+## Trust And Verification
+
+If you are evaluating whether to trust Hermes Desktop, start here:
+
+- read [SECURITY.md](SECURITY.md) for the current security model: what runs
+  locally, what runs remotely over SSH, what the app stores, and which network
+  calls it makes
+- read [docs/distribution.md](docs/distribution.md) for the current release
+  model, including the limits of ad-hoc signing, what the published checksum
+  does and does not prove, and what you can verify yourself
+- build the app from source with `./scripts/build-macos-app.sh` if you prefer
+  the strongest trust path available in this repo today
+
 ## Before You Download
 
 Setup is intentionally lightweight. You need only a few things:
@@ -151,6 +164,10 @@ macOS may show a warning saying Apple cannot verify it for malware. That is
 expected for this distribution model and does not mean macOS found malware in
 Hermes Desktop.
 
+If you want the exact trust and verification details before launching, read
+[docs/distribution.md](docs/distribution.md). If you prefer not to trust the
+release zip, use the [Build From Source](#build-from-source) path instead.
+
 If macOS blocks the first launch:
 
 1. Click `Done`, not `Move to Bin`.
@@ -174,6 +191,9 @@ After installing:
 ```bash
 codesign --verify --deep --strict /Applications/HermesDesktop.app
 ```
+
+For the full explanation of what those checks do and do not establish, see
+[docs/distribution.md](docs/distribution.md).
 
 ## Connect Your Hermes Host
 
@@ -390,6 +410,9 @@ Here are concrete things you can verify yourself:
 - you can inspect its live network behavior with Little Snitch, LuLu, or
   `nettop`
 
+For the current trust model in one place, read [SECURITY.md](SECURITY.md) and
+[docs/distribution.md](docs/distribution.md).
+
 One distribution detail to understand: the public build is ad-hoc signed and
 not notarized by Apple. That is why macOS may show a first-launch warning. It is
 different from Apple actively reporting that it found malware in the app.
@@ -425,6 +448,9 @@ available. Kanban reads and writes the upstream host-wide Kanban home: the
 default board is `~/.hermes/kanban.db`, and additional boards use
 `~/.hermes/kanban/boards/<slug>/kanban.db` when available. Cron jobs use the
 remote scheduler state. Files and skills are saved back to the host.
+
+Some app state still exists locally on your Mac. The current local state is
+documented in [SECURITY.md](SECURITY.md).
 
 ### What does in-app chat do?
 
@@ -499,25 +525,30 @@ source of truth.
 
 ### From Here
 
-- reduce distribution friction with signing and notarization
 - keep polishing onboarding, diagnostics, Files ergonomics, terminal UX, and
   multi-host details without adding a second transport model or shadow state
 - keep tracking upstream Hermes Agent changes, especially around Kanban and
   session chat, so the app stays close to the real host workflow
+- keep the trust story and release documentation aligned with the code and the
+  actual distribution model used by the repo at the time of release
 
 Anything larger than that should be justified by Hermes itself, not added here
 for novelty.
 
 ## Build From Source
 
-For local development, the supported path in this repo is to build the app
-bundle directly:
+For cautious users, building from source is the clearest trust path available
+in this repo today. For local development, it is also the supported path for
+producing the app bundle directly:
 
 ```bash
 ./scripts/build-macos-app.sh
 ```
 
 Then open `dist/HermesDesktop.app`.
+
+That build path creates the same kind of ad-hoc signed bundle used by the
+release packaging flow. Details: [docs/distribution.md](docs/distribution.md).
 
 To run the release-support test suite:
 

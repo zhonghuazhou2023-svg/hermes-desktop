@@ -3,7 +3,8 @@
 /.build
 /.build-tests
 /dist
-/docs/
+/docs/*
+!/docs/distribution.md
 /private/
 /.swiftpm-home
 /packaging/AppIcon-1024.png
