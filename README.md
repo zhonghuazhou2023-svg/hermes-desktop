@@ -27,20 +27,20 @@ which path the app is using, and where the work is happening.
       <img src="assets/sessions.png" alt="Hermes Desktop Sessions view" />
     </td>
     <td width="50%">
-      <img src="assets/kanban.png" alt="Hermes Desktop Kanban view" />
+      <img src="assets/workflows.png" alt="Hermes Desktop Workflows view" />
     </td>
   </tr>
   <tr>
+    <td width="50%">
+      <img src="assets/kanban.png" alt="Hermes Desktop Kanban view" />
+    </td>
     <td width="50%">
       <img src="assets/files.png" alt="Hermes Desktop Files view" />
     </td>
-    <td width="50%">
-      <img src="assets/USAGE.png" alt="Hermes Desktop Usage view" />
-    </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="assets/skills.png" alt="Hermes Desktop Skills view" />
+      <img src="assets/USAGE.png" alt="Hermes Desktop Usage view" />
     </td>
     <td width="50%">
       <img src="assets/terminal.png" alt="Hermes Desktop Terminal view" />
@@ -48,9 +48,8 @@ which path the app is using, and where the work is happening.
   </tr>
 </table>
 
-Six previewed views from the app: sessions, Kanban, workspace files, usage,
-skills, and terminal. The current release also adds a dedicated Workflows
-workspace for reusable terminal launch presets.
+Six previewed views from the app: sessions, workflows, Kanban, workspace
+files, usage, and terminal.
 
 ## At A Glance
 
