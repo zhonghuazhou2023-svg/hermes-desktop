@@ -1,9 +1,7 @@
 # Hermes Desktop v0.8.0
 
-`v0.8.0` is a trust-and-workflows release. It adds reusable terminal workflow
-presets, tightens SSH and non-interactive shell behavior, and raises the
-release baseline with stronger tests, packaging metadata, and public trust
-documentation.
+`v0.8.0` adds reusable terminal workflows, tighter SSH behavior, and a more
+complete release verification path.
 
 Hermes Desktop still talks directly to the selected Hermes host over SSH. The
 host remains the source of truth. There is no gateway API, remote helper
@@ -12,22 +10,15 @@ daemon, local mirror, or background sync layer added in this release.
 ## Highlights
 
 - new `Workflows` workspace for reusable prompt presets scoped to the active
-  host/profile, with optional skill selections and one-click launch into a
-  fresh Terminal tab
-- workflow presets stay local to the Mac and do not create remote shadow state;
-  they are a launch convenience layered on top of the existing SSH-first model
-- harder non-interactive SSH behavior, including clearer `python3` PATH errors
-  and better detection of noisy shell startup output that breaks JSON-based app
-  requests
-- expanded regression coverage for SSH transport, terminal input submission,
-  workflow persistence, connection storage, file-edit safety, and localization
-- new macOS CI flow that runs tests, builds the app bundle, packages the
-  release zip, and verifies the packaged artifact
-- release packaging now emits a small JSON manifest alongside
-  `HermesDesktop.app.zip` and `HermesDesktop.app.zip.sha256`
-- new public `SECURITY.md` and expanded distribution guidance so users can
-  evaluate what runs locally, what runs remotely, and what the current release
-  artifacts do and do not prove
+  host/profile, with optional skills and one-click launch into a fresh
+  Terminal tab
+- workflow presets stay local to the Mac and do not create remote shadow state
+- more resilient non-interactive SSH behavior, including clearer `python3`
+  PATH errors and better handling when shell startup output breaks app requests
+- stronger regression coverage for SSH transport, terminal input submission,
+  workflow persistence, connection storage, file editing, and localization
+- new macOS CI, release manifest generation, and packaged-release verification
+- new public trust docs: `SECURITY.md` and expanded distribution guidance
 
 ## Compatibility
 
@@ -52,7 +43,6 @@ daemon, local mirror, or background sync layer added in this release.
 ## Notes
 
 - universal macOS build for Apple Silicon and Intel
-- open source
 - ad-hoc signed and not notarized yet, so first launch may still require
   right-click -> Open / Open Anyway
 - release archive: `HermesDesktop.app.zip`
