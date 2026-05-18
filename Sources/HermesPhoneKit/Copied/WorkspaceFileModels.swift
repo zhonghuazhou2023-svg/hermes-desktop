@@ -9,10 +9,16 @@ enum WorkspaceFileLimits {
 }
 
 struct WorkspaceFileBookmark: Codable, Identifiable, Equatable, Hashable, Sendable {
+    enum TargetKind: String, Codable, Sendable {
+        case file
+        case directory
+    }
+
     var id: UUID
     var workspaceScopeFingerprint: String
     var remotePath: String
     var title: String?
+    var targetKind: TargetKind
     var createdAt: Date
     var updatedAt: Date
 
@@ -21,6 +27,7 @@ struct WorkspaceFileBookmark: Codable, Identifiable, Equatable, Hashable, Sendab
         workspaceScopeFingerprint: String,
         remotePath: String,
         title: String? = nil,
+        targetKind: TargetKind = .file,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -28,8 +35,30 @@ struct WorkspaceFileBookmark: Codable, Identifiable, Equatable, Hashable, Sendab
         self.workspaceScopeFingerprint = workspaceScopeFingerprint
         self.remotePath = remotePath.trimmingCharacters(in: .whitespacesAndNewlines)
         self.title = title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        self.targetKind = targetKind
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workspaceScopeFingerprint
+        case remotePath
+        case title
+        case targetKind = "target_kind"
+        case createdAt
+        case updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        workspaceScopeFingerprint = try container.decode(String.self, forKey: .workspaceScopeFingerprint)
+        remotePath = try container.decode(String.self, forKey: .remotePath)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        targetKind = try container.decodeIfPresent(TargetKind.self, forKey: .targetKind) ?? .file
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
 
     var fileID: String {
@@ -67,6 +96,7 @@ struct WorkspaceFileReference: Identifiable, Hashable, Sendable {
     let subtitle: String
     let remotePath: String
     let kind: Kind
+    let targetKind: WorkspaceFileBookmark.TargetKind
     let systemImage: String
 
     var bookmarkID: UUID? {
@@ -78,6 +108,10 @@ struct WorkspaceFileReference: Identifiable, Hashable, Sendable {
         bookmarkID != nil
     }
 
+    var opensDirectory: Bool {
+        targetKind == .directory
+    }
+
     static func canonical(_ trackedFile: RemoteTrackedFile, remotePath: String) -> WorkspaceFileReference {
         WorkspaceFileReference(
             id: trackedFile.workspaceFileID,
@@ -85,6 +119,7 @@ struct WorkspaceFileReference: Identifiable, Hashable, Sendable {
             subtitle: remotePath,
             remotePath: remotePath,
             kind: .canonical(trackedFile),
+            targetKind: .file,
             systemImage: "doc.text"
         )
     }
@@ -96,7 +131,8 @@ struct WorkspaceFileReference: Identifiable, Hashable, Sendable {
             subtitle: bookmark.remotePath,
             remotePath: bookmark.remotePath,
             kind: .bookmark(bookmark.id),
-            systemImage: "bookmark.fill"
+            targetKind: bookmark.targetKind,
+            systemImage: bookmark.targetKind == .directory ? "folder.fill" : "bookmark.fill"
         )
     }
 }
@@ -236,7 +272,23 @@ struct RemoteDirectoryEntry: Decodable, Identifiable, Hashable, Sendable {
     }
 
     var canBookmark: Bool {
-        kind == .file && isReadable && !isTooLargeToEdit
+        guard let bookmarkTargetKind else { return false }
+        guard isReadable else { return false }
+        if bookmarkTargetKind == .file {
+            return !isTooLargeToEdit
+        }
+        return true
+    }
+
+    var bookmarkTargetKind: WorkspaceFileBookmark.TargetKind? {
+        switch kind {
+        case .directory:
+            return .directory
+        case .file, .symlink:
+            return .file
+        case .other:
+            return nil
+        }
     }
 
     var isTooLargeToEdit: Bool {

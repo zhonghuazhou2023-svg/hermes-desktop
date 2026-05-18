@@ -64,6 +64,47 @@ struct PersistenceEnvelope: Codable {
     var activeConnectionID: UUID?
     var connections: [ConnectionProfile]
     var terminalWorkspace: PersistedTerminalWorkspace?
+    var workspaceFileBookmarks: [WorkspaceFileBookmark] = []
+
+    enum CodingKeys: String, CodingKey {
+        case activeConnectionID
+        case connections
+        case terminalWorkspace
+        case workspaceFileBookmarks
+    }
+
+    init(
+        activeConnectionID: UUID?,
+        connections: [ConnectionProfile],
+        terminalWorkspace: PersistedTerminalWorkspace?,
+        workspaceFileBookmarks: [WorkspaceFileBookmark] = []
+    ) {
+        self.activeConnectionID = activeConnectionID
+        self.connections = connections
+        self.terminalWorkspace = terminalWorkspace
+        self.workspaceFileBookmarks = workspaceFileBookmarks
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        activeConnectionID = try container.decodeIfPresent(UUID.self, forKey: .activeConnectionID)
+        connections = try container.decode([ConnectionProfile].self, forKey: .connections)
+        terminalWorkspace = try container.decodeIfPresent(PersistedTerminalWorkspace.self, forKey: .terminalWorkspace)
+        workspaceFileBookmarks = try container.decodeIfPresent([WorkspaceFileBookmark].self, forKey: .workspaceFileBookmarks) ?? []
+    }
+}
+
+enum HermesPhoneRootTab: Hashable {
+    case chat
+    case terminal
+    case sessions
+    case files
+    case more
+}
+
+enum HermesPhoneChatRoute: Hashable {
+    case transcript(SessionSummary)
+    case conversation
 }
 
 final class ConnectionSecretsStore {
@@ -154,6 +195,8 @@ enum HermesPhoneStoreError: LocalizedError {
 
 @MainActor
 final class HermesPhoneStore: ObservableObject {
+    @Published var selectedRootTab: HermesPhoneRootTab = .chat
+    @Published var chatNavigationPath: [HermesPhoneChatRoute] = []
     @Published var connections: [ConnectionProfile] = []
     @Published var activeConnectionID: UUID?
     @Published var overview: RemoteDiscovery?
@@ -167,9 +210,12 @@ final class HermesPhoneStore: ObservableObject {
     @Published var isLoadingFiles = false
     @Published var isBusy = false
     @Published var alertMessage: String?
+    @Published var hostKeyPrompt: HostKeyTrustPrompt?
     @Published var fileEditor: RemoteFileDraft?
+    @Published private(set) var workspaceFileBookmarks: [WorkspaceFileBookmark] = []
 
     let terminalWorkspace = HermesTerminalWorkspaceStore()
+    lazy var nativeChatStore = HermesNativeChatStore(phoneStore: self, sshTransport: sshTransport)
 
     private let secretsStore = ConnectionSecretsStore()
     private let sshTransport = SSHTransport()
@@ -232,6 +278,20 @@ final class HermesPhoneStore: ObservableObject {
                     activeConnection.remotePath(for: trackedFile)
             )
         }
+    }
+
+    var bookmarkedWorkspaceFileReferences: [WorkspaceFileReference] {
+        guard let activeConnection else { return [] }
+        return workspaceFileBookmarks
+            .filter { $0.workspaceScopeFingerprint == activeConnection.workspaceScopeFingerprint }
+            .sorted { lhs, rhs in
+                lhs.displayTitle.localizedCaseInsensitiveCompare(rhs.displayTitle) == .orderedAscending
+            }
+            .map(WorkspaceFileReference.bookmark)
+    }
+
+    var bookmarkedWorkspaceFileGroups: [WorkspaceFileBookmarkGroup] {
+        WorkspaceFileBookmarkGroup.groups(for: bookmarkedWorkspaceFileReferences)
     }
 
     func credential(for connection: ConnectionProfile) throws -> SSHCredentialRecord {
@@ -331,6 +391,7 @@ final class HermesPhoneStore: ObservableObject {
             }
             return "Connected to \(profile.displayDestination)."
         } catch {
+            present(error)
             return error.localizedDescription
         }
     }
@@ -387,16 +448,40 @@ final class HermesPhoneStore: ObservableObject {
             startupCommandLine: invocation.startupCommandLine,
             titleHint: session.resolvedTitle
         )
+        selectedRootTab = .terminal
+    }
+
+    func continueSessionInChat(_ session: SessionSummary) {
+        selectedRootTab = .chat
+        nativeChatStore.queueResumeSession(session)
+        chatNavigationPath = [.conversation]
+    }
+
+    func openNewChat() {
+        selectedRootTab = .chat
+        nativeChatStore.prepareNewChat()
+        chatNavigationPath = [.conversation]
+    }
+
+    func reopenActiveConversation() {
+        selectedRootTab = .chat
+        chatNavigationPath = [.conversation]
+    }
+
+    func openNativeChat() {
+        openNewChat()
     }
 
     func ensureTerminalConnected() {
         guard let connection = terminalConnection else { return }
         terminalWorkspace.ensureInitialSession(for: connection)
+        selectedRootTab = .terminal
     }
 
     func openNewTerminalSession() {
         guard let connection = terminalConnection else { return }
         terminalWorkspace.addSession(for: connection)
+        selectedRootTab = .terminal
     }
 
     func loadCronJobs() async {
@@ -449,6 +534,14 @@ final class HermesPhoneStore: ObservableObject {
         await openRemoteFile(remotePath: reference.remotePath, title: reference.title)
     }
 
+    func openWorkspaceFileReference(_ reference: WorkspaceFileReference) async {
+        if reference.opensDirectory {
+            await browseDirectory(path: reference.remotePath)
+        } else {
+            await openRemoteFile(remotePath: reference.remotePath, title: reference.title)
+        }
+    }
+
     func openDirectoryEntry(_ entry: RemoteDirectoryEntry) async {
         switch entry.kind {
         case .directory:
@@ -457,6 +550,71 @@ final class HermesPhoneStore: ObservableObject {
             await openRemoteFile(remotePath: entry.displayPath, title: entry.name)
         case .other:
             break
+        }
+    }
+
+    @discardableResult
+    func addWorkspaceFileBookmark(
+        remotePath: String,
+        title: String? = nil,
+        targetKind: WorkspaceFileBookmark.TargetKind,
+        selectAfterAdd: Bool = false
+    ) -> WorkspaceFileBookmark? {
+        guard let activeConnection else { return nil }
+        let normalizedRemotePath = remotePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedRemotePath.isEmpty else { return nil }
+
+        if let index = workspaceFileBookmarks.firstIndex(where: {
+            $0.workspaceScopeFingerprint == activeConnection.workspaceScopeFingerprint &&
+                $0.remotePath == normalizedRemotePath
+        }) {
+            var bookmark = workspaceFileBookmarks[index]
+            bookmark.title = title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank ?? bookmark.title
+            bookmark.targetKind = targetKind
+            bookmark.updatedAt = Date()
+            workspaceFileBookmarks[index] = bookmark
+            persistConnections()
+            if selectAfterAdd {
+                Task { await openWorkspaceFileReference(.bookmark(bookmark)) }
+            }
+            return bookmark
+        }
+
+        let bookmark = WorkspaceFileBookmark(
+            workspaceScopeFingerprint: activeConnection.workspaceScopeFingerprint,
+            remotePath: normalizedRemotePath,
+            title: title,
+            targetKind: targetKind
+        )
+        workspaceFileBookmarks.append(bookmark)
+        persistConnections()
+        if selectAfterAdd {
+            Task { await openWorkspaceFileReference(.bookmark(bookmark)) }
+        }
+        return bookmark
+    }
+
+    func removeWorkspaceFileBookmark(id: UUID) {
+        workspaceFileBookmarks.removeAll { $0.id == id }
+        persistConnections()
+    }
+
+    func removeWorkspaceFileBookmark(remotePath: String) {
+        guard let activeConnection else { return }
+        let normalizedRemotePath = remotePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        workspaceFileBookmarks.removeAll {
+            $0.workspaceScopeFingerprint == activeConnection.workspaceScopeFingerprint &&
+                $0.remotePath == normalizedRemotePath
+        }
+        persistConnections()
+    }
+
+    func isWorkspaceFileBookmarked(remotePath: String) -> Bool {
+        guard let activeConnection else { return false }
+        let normalizedRemotePath = remotePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return workspaceFileBookmarks.contains {
+            $0.workspaceScopeFingerprint == activeConnection.workspaceScopeFingerprint &&
+                $0.remotePath == normalizedRemotePath
         }
     }
 
@@ -478,8 +636,8 @@ final class HermesPhoneStore: ObservableObject {
         }
     }
 
-    func saveOpenFile(content: String) async {
-        guard let connection = activeConnection, let fileEditor else { return }
+    func saveOpenFile(content: String) async -> Bool {
+        guard let connection = activeConnection, let fileEditor else { return false }
         isBusy = true
         defer { isBusy = false }
 
@@ -496,13 +654,30 @@ final class HermesPhoneStore: ObservableObject {
                 content: content,
                 contentHash: saveResult.contentHash
             )
+            return true
         } catch {
             present(error)
+            return false
         }
     }
 
     func dismissAlert() {
         alertMessage = nil
+    }
+
+    func dismissHostKeyPrompt() {
+        hostKeyPrompt = nil
+    }
+
+    func acceptHostKeyPrompt() {
+        guard let challenge = hostKeyPrompt?.challenge else { return }
+        do {
+            try HostKeyTrustStore().save(TrustedHostKeyRecord(challenge: challenge))
+            hostKeyPrompt = nil
+            alertMessage = "Trusted \(challenge.displayDestination). Retry the connection to continue."
+        } catch {
+            present(error)
+        }
     }
 
     private func validateDraft(profile: ConnectionProfile, credential: SSHCredentialRecord) throws {
@@ -530,7 +705,8 @@ final class HermesPhoneStore: ObservableObject {
             let envelope = PersistenceEnvelope(
                 activeConnectionID: activeConnectionID,
                 connections: connections,
-                terminalWorkspace: terminalWorkspace.snapshot()
+                terminalWorkspace: terminalWorkspace.snapshot(),
+                workspaceFileBookmarks: workspaceFileBookmarks
             )
             let data = try encoder.encode(envelope)
             let url = try persistenceURL()
@@ -553,6 +729,7 @@ final class HermesPhoneStore: ObservableObject {
             connections = envelope.connections
             activeConnectionID = envelope.activeConnectionID ?? connections.first?.id
             terminalWorkspace.restore(from: envelope.terminalWorkspace, availableConnections: connections)
+            workspaceFileBookmarks = envelope.workspaceFileBookmarks
         } catch {
             present(error)
         }
@@ -566,6 +743,20 @@ final class HermesPhoneStore: ObservableObject {
     }
 
     private func present(_ error: Error) {
+        if let hostKeyError = error as? HostKeyValidationError {
+            alertMessage = nil
+            switch hostKeyError {
+            case .unknownHost(let challenge):
+                hostKeyPrompt = HostKeyTrustPrompt(challenge: challenge, expectedRecord: nil)
+            case .hostKeyMismatch(let expected, let presented):
+                hostKeyPrompt = HostKeyTrustPrompt(challenge: presented, expectedRecord: expected)
+            case .storeFailure(let message):
+                hostKeyPrompt = nil
+                alertMessage = message
+            }
+            return
+        }
+
         alertMessage = error.localizedDescription
     }
 }
@@ -598,7 +789,7 @@ final class SSHTransport: @unchecked Sendable {
             }
         }
 
-        let wrapped = try makeWrappedCommand(
+        let wrapped = makeWrappedCommand(
             for: connection,
             remoteCommand: remoteCommand,
             standardInput: standardInput
@@ -712,7 +903,12 @@ final class SSHTransport: @unchecked Sendable {
             host: connection.effectiveTarget,
             port: connection.resolvedPort ?? 22,
             authenticationMethod: { authMethod },
-            hostKeyValidator: .acceptAnything()
+            hostKeyValidator: .custom(
+                ConnectionHostKeyValidator(
+                    connection: connection,
+                    trustStore: HostKeyTrustStore()
+                )
+            )
         )
 
         do {
@@ -722,11 +918,11 @@ final class SSHTransport: @unchecked Sendable {
         }
     }
 
-    private func makeWrappedCommand(
+    func makeWrappedCommand(
         for connection: ConnectionProfile,
         remoteCommand: String,
         standardInput: Data?
-    ) throws -> String {
+    ) -> String {
         var commandBody = remoteCommand
         if let standardInput, let inputText = String(data: standardInput, encoding: .utf8) {
             let marker = "__HERMES_STDIN__"
@@ -738,6 +934,10 @@ final class SSHTransport: @unchecked Sendable {
     }
 
     private func mapConnectionError(_ error: Error, connection: ConnectionProfile) -> Error {
+        if let hostKeyError = error as? HostKeyValidationError {
+            return hostKeyError
+        }
+
         if let channelError = error as? ChannelError {
             switch channelError {
             case .inputClosed, .eof, .alreadyClosed:
@@ -840,24 +1040,35 @@ public struct HermesPhoneRootView: View {
     public init() {}
 
     public var body: some View {
-        TabView {
+        TabView(selection: $store.selectedRootTab) {
+            NavigationStack(path: $store.chatNavigationPath) {
+                ChatInboxScreen()
+                    .navigationDestination(for: HermesPhoneChatRoute.self) { route in
+                        switch route {
+                        case .transcript(let session):
+                            SessionTranscriptScreen(session: session)
+                        case .conversation:
+                            NativeChatScreen(chatStore: store.nativeChatStore)
+                        }
+                    }
+            }
+            .tag(HermesPhoneRootTab.chat)
+            .tabItem {
+                Label("Chats", systemImage: "bubble.left.and.bubble.right")
+            }
+
             NavigationStack {
                 TerminalScreen(workspace: store.terminalWorkspace)
             }
+            .tag(HermesPhoneRootTab.terminal)
             .tabItem {
                 Label("Terminal", systemImage: "terminal")
             }
 
             NavigationStack {
-                SessionsView()
-            }
-            .tabItem {
-                Label("Sessions", systemImage: "text.bubble")
-            }
-
-            NavigationStack {
                 FilesScreen()
             }
+            .tag(HermesPhoneRootTab.files)
             .tabItem {
                 Label("Files", systemImage: "doc.text")
             }
@@ -865,6 +1076,7 @@ public struct HermesPhoneRootView: View {
             NavigationStack {
                 MoreScreen()
             }
+            .tag(HermesPhoneRootTab.more)
             .tabItem {
                 Label("More", systemImage: "ellipsis.circle")
             }
@@ -883,6 +1095,30 @@ public struct HermesPhoneRootView: View {
             }
         } message: {
             Text(store.alertMessage ?? "")
+        }
+        .alert(
+            store.hostKeyPrompt?.title ?? "SSH Host Key",
+            isPresented: Binding(
+                get: { store.hostKeyPrompt != nil },
+                set: { newValue in
+                    if !newValue { store.dismissHostKeyPrompt() }
+                }
+            )
+        ) {
+            if store.hostKeyPrompt?.allowsTrust == true {
+                Button("Trust") {
+                    store.acceptHostKeyPrompt()
+                }
+                Button("Cancel", role: .cancel) {
+                    store.dismissHostKeyPrompt()
+                }
+            } else {
+                Button("OK", role: .cancel) {
+                    store.dismissHostKeyPrompt()
+                }
+            }
+        } message: {
+            Text(store.hostKeyPrompt?.message ?? "")
         }
         .sheet(item: $store.fileEditor) { draft in
             FileEditorSheet(draft: draft)
@@ -988,6 +1224,7 @@ private struct ConnectionsScreen: View {
 
                     if let overview = store.overview {
                         VStack(alignment: .leading, spacing: 8) {
+                            workspaceMetric(label: "Remote Home", value: overview.remoteHome)
                             workspaceMetric(label: "Hermes Home", value: overview.hermesHome)
                             workspaceMetric(label: "Session Store", value: overview.sessionStore?.path ?? "Not found")
                             workspaceMetric(label: "Profiles", value: overview.availableProfiles.map(\.name).joined(separator: " · "))
@@ -1119,10 +1356,10 @@ private struct TerminalScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
+            terminalFloatingToolbar
             terminalSurface
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.bottom, terminalSurfaceBottomInset)
                 .layoutPriority(1)
         }
         .padding(.horizontal, 8)
@@ -1152,9 +1389,8 @@ private struct TerminalScreen: View {
             await store.refreshOverview()
             store.ensureTerminalConnected()
         }
-        .task(id: keyboard.bottomInset) {
+        .task(id: keyboard.isVisible) {
             guard let session = workspace.selectedSession else { return }
-            session.refreshLayout()
             if keyboard.isVisible {
                 session.focusInput()
                 session.ensurePromptVisible()
@@ -1163,10 +1399,8 @@ private struct TerminalScreen: View {
         .task(id: workspace.selectedSessionID) {
             guard let session = workspace.selectedSession else { return }
             session.connectIfNeeded()
-            if keyboard.isVisible {
-                session.focusInput()
-                session.ensurePromptVisible()
-            }
+            session.focusInput()
+            session.ensurePromptVisible()
         }
         .sheet(isPresented: $isPresentingAppearanceSheet) {
             TerminalAppearanceSheet(
@@ -1184,37 +1418,26 @@ private struct TerminalScreen: View {
         )
     }
 
-    private var terminalSurfaceBottomInset: CGFloat {
-        guard keyboard.isVisible else { return 0 }
-        return keyboard.bottomInset + 12
-    }
-
     private var terminalSurface: some View {
-        ZStack(alignment: .top) {
-            Group {
-                if let selectedSession = workspace.selectedSession {
-                    HermesTerminalRepresentable(
-                        session: selectedSession,
-                        appearance: terminalAppearance
-                    )
-                        .id(selectedSession.id)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                } else {
-                    ContentUnavailableView(
-                        "No Session",
-                        systemImage: "terminal",
-                        description: Text("Open a host shell and keep it alive while you move around the app.")
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+        Group {
+            if let selectedSession = workspace.selectedSession {
+                HermesTerminalRepresentable(
+                    session: selectedSession,
+                    appearance: terminalAppearance
+                )
+                    .id(selectedSession.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                ContentUnavailableView(
+                    "No Session",
+                    systemImage: "terminal",
+                    description: Text("Open a host shell and keep it alive while you move around the app.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .background(Color.black.opacity(0.97))
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-
-            terminalFloatingToolbar
-                .padding(.horizontal, 10)
-                .padding(.top, 10)
         }
+        .background(Color.black.opacity(0.97))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -1580,7 +1803,7 @@ private struct ActiveWorkspaceStrip: View {
     }
 }
 
-private struct SessionsView: View {
+private struct ChatInboxScreen: View {
     @EnvironmentObject private var store: HermesPhoneStore
     @State private var query = ""
 
@@ -1592,48 +1815,623 @@ private struct SessionsView: View {
                     .listRowBackground(Color.clear)
             }
 
-            Section {
-                TextField("Search sessions", text: $query)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onSubmit {
-                        Task { await store.loadSessions(query: query) }
+            if let connection = store.activeConnection {
+                Section {
+                    ConversationLaunchCard(
+                        connection: connection,
+                        chatStore: store.nativeChatStore,
+                        onNewChat: store.openNewChat,
+                        onOpenTerminal: store.ensureTerminalConnected
+                    )
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                }
+
+                if store.isLoadingSessions && store.sessions.isEmpty {
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView("Loading chats…")
+                            Spacer()
+                        }
                     }
+                } else if store.sessions.isEmpty {
+                    Section("Recent Conversations") {
+                        ContentUnavailableView(
+                            "No Chats Yet",
+                            systemImage: "bubble.left.and.text.bubble.right",
+                            description: Text("Start a new Hermes chat with the selected profile. Your past conversations for this profile will appear here.")
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                } else {
+                    Section(querySectionTitle) {
+                        ForEach(store.sessions) { session in
+                            NavigationLink(value: HermesPhoneChatRoute.transcript(session)) {
+                                ConversationRow(
+                                    session: session,
+                                    isActiveConversation: store.nativeChatStore.currentSessionID == session.id
+                                )
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Continue", systemImage: "bubble.left.and.bubble.right") {
+                                    store.continueSessionInChat(session)
+                                }
+                                .tint(.blue)
+
+                                Button("Terminal", systemImage: "terminal") {
+                                    store.resumeSessionInTerminal(session)
+                                }
+                                .tint(.green)
+                            }
+                            .contextMenu {
+                                Button {
+                                    store.continueSessionInChat(session)
+                                } label: {
+                                    Label("Continue in Chat", systemImage: "bubble.left.and.bubble.right")
+                                }
+
+                                Button {
+                                    store.resumeSessionInTerminal(session)
+                                } label: {
+                                    Label("Resume in Terminal", systemImage: "terminal")
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Section {
+                    ContentUnavailableView(
+                        "No Active Connection",
+                        systemImage: "server.rack",
+                        description: Text("Choose a saved SSH connection to browse profile-specific chats or start a new Hermes conversation.")
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Chats")
+        .toolbar {
+            if store.activeConnection != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        store.openNewChat()
+                    } label: {
+                        Label("New Chat", systemImage: "square.and.pencil")
+                    }
+                }
+            }
+        }
+        .searchable(
+            text: $query,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search past chats"
+        )
+        .onSubmit(of: .search) {
+            Task { await store.loadSessions(query: query) }
+        }
+        .onChange(of: query) { _, newValue in
+            if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Task { await store.loadSessions() }
+            }
+        }
+        .task(id: store.activeWorkspaceScopeFingerprint) {
+            await store.refreshOverview()
+            await store.loadSessions()
+            await store.nativeChatStore.syncWithActiveConnection()
+            await store.nativeChatStore.refreshBootstrapStatus(force: true)
+        }
+        .refreshable {
+            await store.refreshOverview()
+            await store.loadSessions(query: query)
+            await store.nativeChatStore.refreshBootstrapStatus(force: true)
+        }
+    }
+
+    private var querySectionTitle: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Recent Conversations" : "Search Results"
+    }
+}
+
+private struct ConversationLaunchCard: View {
+    let connection: ConnectionProfile
+    @ObservedObject var chatStore: HermesNativeChatStore
+    let onNewChat: () -> Void
+    let onOpenTerminal: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Button(action: onNewChat) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                        Text("New Chat")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(action: onOpenTerminal) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "terminal")
+                        Text("Terminal")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
 
-            ForEach(store.sessions) { session in
-                NavigationLink {
-                    SessionTranscriptScreen(session: session)
+            if !chatStore.canUseNativeChat, let fallbackReason = chatStore.fallbackReason {
+                Text(fallbackReason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.09, green: 0.18, blue: 0.17),
+                            Color(red: 0.06, green: 0.11, blue: 0.13)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.08))
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Chat actions for \(connection.resolvedHermesProfileName)")
+    }
+}
+
+private struct ConversationRow: View {
+    let session: SessionSummary
+    let isActiveConversation: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(session.resolvedTitle)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text(timestampText)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
+            Text(previewText)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            HStack(spacing: 8) {
+                if isActiveConversation {
+                    DetailBadge(title: "Live", tint: Color(red: 0.18, green: 0.72, blue: 0.62))
+                }
+
+                if let model = session.displayModel {
+                    DetailBadge(title: model, tint: .blue)
+                }
+
+                if let count = session.messageCount {
+                    DetailBadge(title: "\(count) msgs", tint: .secondary)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var previewText: String {
+        if let snippet = session.searchMatch?.snippet?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !snippet.isEmpty {
+            return snippet
+        }
+
+        if let preview = session.preview?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !preview.isEmpty {
+            return preview
+        }
+
+        return "Open this chat to review the transcript or continue it."
+    }
+
+    private var timestampText: String {
+        if let date = session.lastActive?.dateValue ?? session.startedAt?.dateValue {
+            return DateFormatters.shortDateTimeString(from: date)
+        }
+        return "No date"
+    }
+}
+
+private struct SessionSummaryCard: View {
+    let session: SessionSummary
+    let onContinueInChat: () -> Void
+    let onResumeInTerminal: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(session.resolvedTitle)
+                    .font(.headline)
+
+                if let preview = session.preview, !preview.isEmpty {
+                    Text(preview)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+            }
+
+            HStack(spacing: 8) {
+                if let model = session.displayModel {
+                    DetailBadge(title: model, tint: .blue)
+                }
+
+                if let count = session.messageCount {
+                    DetailBadge(title: "\(count) msgs", tint: .secondary)
+                }
+
+                if let lastActive = session.lastActive?.dateValue ?? session.startedAt?.dateValue {
+                    DetailBadge(title: DateFormatters.shortDateTimeString(from: lastActive), tint: .secondary)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Button(action: onContinueInChat) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                        Text("Continue in Chat")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(action: onResumeInTerminal) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "terminal")
+                        Text("Resume in Terminal")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(18)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+private struct TranscriptMessageRow: View {
+    let message: SessionMessage
+    @State private var isDetailExpanded: Bool
+    @State private var isReasoningExpanded = false
+    @State private var isMetadataExpanded = false
+
+    init(message: SessionMessage) {
+        self.message = message
+        _isDetailExpanded = State(initialValue: false)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(message.role.displayTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(roleTint)
+
+                Spacer()
+
+                if let date = message.timestamp?.dateValue {
+                    Text(DateFormatters.shortDateTimeString(from: date))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            if isPrimaryConversationTurn {
+                if let content = message.content, !content.isEmpty {
+                    Text(content)
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                DisclosureGroup(isExpanded: $isDetailExpanded) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        transcriptExpandedContent
+                        transcriptSupplementalSections
+                    }
+                    .padding(.top, 8)
                 } label: {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(session.resolvedTitle)
-                            .font(.headline)
-                        if let preview = session.preview, !preview.isEmpty {
-                            Text(preview)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(3)
-                        }
-                        Text(session.lastActive?.dateValue.map(DateFormatters.shortDateTimeString(from:)) ?? "No activity timestamp")
-                            .font(.caption)
+                    transcriptCollapsedSummary
+                }
+                .tint(roleTint)
+            }
+
+            if isPrimaryConversationTurn {
+                transcriptSupplementalSections
+            }
+        }
+        .padding(14)
+        .background(roleBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var transcriptExpandedContent: some View {
+        if let toolSummary {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(toolSummary.title)
+                    .font(.subheadline.weight(.semibold))
+
+                if let preview = SessionToolMessageSummary.detailPreview(from: message.content), !preview.isEmpty {
+                    Text(preview)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if toolSummary.isDetailPreviewTruncated {
+                    Text("Preview truncated")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        } else if let content = message.content, !content.isEmpty {
+            Text(content)
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var transcriptCollapsedSummary: some View {
+        if let toolSummary {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Label(toolSummary.title, systemImage: toolStatusIconName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(roleTint)
+
+                    if let statusText = toolSummary.statusText {
+                        Text(statusText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(toolStatusTint)
+                    }
+
+                    if let sizeText = toolSummary.sizeText {
+                        Text(sizeText)
+                            .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
                 }
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    Button("Resume") {
-                        store.resumeSessionInTerminal(session)
-                    }
-                    .tint(.green)
+
+                if let preview = toolSummary.preview, !preview.isEmpty {
+                    Text(preview)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(collapsedSummaryTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                if let collapsedPreviewText, !collapsedPreviewText.isEmpty {
+                    Text(collapsedPreviewText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
             }
         }
-        .navigationTitle("Sessions")
-        .task(id: store.activeWorkspaceScopeFingerprint) {
-            await store.loadSessions()
+    }
+
+    @ViewBuilder
+    private var transcriptSupplementalSections: some View {
+        if !reasoningMetadataItems.isEmpty {
+            DisclosureGroup(isExpanded: $isReasoningExpanded) {
+                TranscriptMetadataBlock(items: reasoningMetadataItems)
+                    .padding(.top, 8)
+            } label: {
+                Label("Reasoning", systemImage: "sparkles")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .tint(.secondary)
         }
-        .refreshable {
-            await store.loadSessions(query: query)
+
+        if !plainMetadataItems.isEmpty {
+            DisclosureGroup(isExpanded: $isMetadataExpanded) {
+                TranscriptMetadataBlock(items: plainMetadataItems)
+                    .padding(.top, 8)
+            } label: {
+                Label("Metadata", systemImage: "info.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .tint(.secondary)
         }
+    }
+
+    private var isPrimaryConversationTurn: Bool {
+        switch message.role {
+        case .user, .assistant:
+            return true
+        case .system, .event, .custom:
+            return false
+        }
+    }
+
+    private var toolSummary: SessionToolMessageSummary? {
+        message.role.isToolRole ? SessionToolMessageSummary(content: message.content) : nil
+    }
+
+    private var reasoningMetadataItems: [SessionMetadataDisplayItem] {
+        metadataItems.filter { item in
+            let normalizedKey = item.key.lowercased()
+            return normalizedKey.contains("reasoning")
+        }
+    }
+
+    private var plainMetadataItems: [SessionMetadataDisplayItem] {
+        metadataItems.filter { item in
+            let normalizedKey = item.key.lowercased()
+            return !normalizedKey.contains("reasoning")
+        }
+    }
+
+    private var metadataItems: [SessionMetadataDisplayItem] {
+        let metadata = message.displayMetadata ?? [:]
+        return metadata.keys.sorted().compactMap { key in
+            guard let value = metadata[key] else { return nil }
+            return SessionMetadataDisplayItem(key: key, value: value)
+        }
+    }
+
+    private var collapsedSummaryTitle: String {
+        switch message.role {
+        case .system:
+            return "System note"
+        case .event:
+            return "Event details"
+        case .custom(let value):
+            return value.replacingOccurrences(of: "_", with: " ").capitalized
+        case .user, .assistant:
+            return message.role.displayTitle
+        }
+    }
+
+    private var collapsedPreviewText: String? {
+        let source = message.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !source.isEmpty else {
+            if !reasoningMetadataItems.isEmpty {
+                return "Contains reasoning details"
+            }
+            if !plainMetadataItems.isEmpty {
+                return "Contains metadata"
+            }
+            return nil
+        }
+
+        let normalized = source
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard normalized.count > 140 else { return normalized }
+        return String(normalized.prefix(137)) + "..."
+    }
+
+    private var toolStatusTint: Color {
+        guard let toolSummary else { return roleTint }
+        switch toolSummary.statusKind {
+        case .success:
+            return .green
+        case .failure:
+            return .red
+        case .neutral:
+            return .secondary
+        }
+    }
+
+    private var toolStatusIconName: String {
+        guard let toolSummary else { return "wrench.and.screwdriver" }
+        switch toolSummary.statusKind {
+        case .success:
+            return "checkmark.circle.fill"
+        case .failure:
+            return "xmark.octagon.fill"
+        case .neutral:
+            return "wrench.and.screwdriver"
+        }
+    }
+
+    private var roleTint: Color {
+        switch message.role {
+        case .user:
+            return Color(red: 0.18, green: 0.72, blue: 0.62)
+        case .assistant:
+            return .secondary
+        case .system:
+            return .blue
+        case .event:
+            return .purple
+        case .custom:
+            return message.role.isToolRole ? .orange : .red
+        }
+    }
+
+    private var roleBackground: Color {
+        switch message.role {
+        case .user:
+            return Color(red: 0.18, green: 0.72, blue: 0.62).opacity(0.12)
+        case .assistant:
+            return Color(.secondarySystemBackground)
+        case .system:
+            return Color.blue.opacity(0.10)
+        case .event:
+            return Color.purple.opacity(0.08)
+        case .custom:
+            return message.role.isToolRole ? Color.orange.opacity(0.10) : Color.red.opacity(0.10)
+        }
+    }
+}
+
+private struct TranscriptMetadataBlock: View {
+    let items: [SessionMetadataDisplayItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(items) { item in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.key.replacingOccurrences(of: "_", with: " ").capitalized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Text(item.displayValue)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+}
+
+private struct DetailBadge: View {
+    let title: String
+    let tint: Color
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(isNeutral ? Color.secondary : tint)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background((isNeutral ? Color(.tertiarySystemFill) : tint.opacity(0.12)), in: Capsule())
+    }
+
+    private var isNeutral: Bool {
+        title.hasSuffix("msgs") || title.contains(":")
     }
 }
 
@@ -1641,51 +2439,72 @@ private struct SessionTranscriptScreen: View {
     @EnvironmentObject private var store: HermesPhoneStore
     let session: SessionSummary
     @State private var messages: [SessionMessage] = []
+    @State private var isLoadingMessages = true
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                ForEach(messages) { message in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(message.role.displayTitle)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            if let date = message.timestamp?.dateValue {
-                                Text(DateFormatters.shortDateTimeString(from: date))
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
+        List {
+            Section {
+                SessionSummaryCard(
+                    session: session,
+                    onContinueInChat: { store.continueSessionInChat(session) },
+                    onResumeInTerminal: { store.resumeSessionInTerminal(session) }
+                )
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            }
 
-                        if let content = message.content, !content.isEmpty {
-                            Text(content)
-                                .font(.body)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
-                        if let metadata = message.displayMetadata, !metadata.isEmpty {
-                            Text(JSONValue.object(metadata).displayString)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                        }
+            if isLoadingMessages {
+                Section("Transcript") {
+                    HStack {
+                        Spacer()
+                        ProgressView("Loading transcript…")
+                        Spacer()
                     }
-                    .padding()
-                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.vertical, 12)
+                }
+            } else if messages.isEmpty {
+                Section("Transcript") {
+                    ContentUnavailableView(
+                        "No Transcript Available",
+                        systemImage: "text.bubble",
+                        description: Text("Hermes did not expose transcript lines for this session yet. You can still continue it in chat or reopen it in the terminal.")
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+            } else {
+                Section("Transcript") {
+                    ForEach(messages) { message in
+                        TranscriptMessageRow(message: message)
+                            .listRowSeparator(.hidden)
+                    }
                 }
             }
-            .padding()
         }
+        .listStyle(.insetGrouped)
         .navigationTitle(session.resolvedTitle)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            Button("Chat") {
+                store.continueSessionInChat(session)
+            }
+
             Button("Resume") {
                 store.resumeSessionInTerminal(session)
             }
         }
-        .task {
-            messages = await store.transcript(for: session.id)
+        .task(id: session.id) {
+            await loadTranscript()
         }
+        .refreshable {
+            await loadTranscript()
+        }
+    }
+
+    private func loadTranscript() async {
+        isLoadingMessages = true
+        messages = await store.transcript(for: session.id)
+        isLoadingMessages = false
     }
 }
 
@@ -1712,7 +2531,7 @@ private struct CronJobsScreen: View {
                             .foregroundStyle(.secondary)
                         Text(job.displayState)
                             .font(.caption)
-                            .foregroundStyle(job.isActive ? .green : .secondary)
+                            .foregroundStyle(job.isActive ? Color.green : Color.secondary)
                     }
                 }
             }
@@ -1811,6 +2630,49 @@ private struct FilesScreen: View {
                 }
             }
 
+            Section("Pinned Files & Folders") {
+                if store.bookmarkedWorkspaceFileGroups.isEmpty {
+                    Text("Pin remote files or folders from the browser below to keep them within easy reach.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(store.bookmarkedWorkspaceFileGroups) { group in
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(group.directoryPath)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+
+                            ForEach(group.references) { reference in
+                                Button {
+                                    Task { await store.openWorkspaceFileReference(reference) }
+                                } label: {
+                                    HStack(alignment: .top, spacing: 10) {
+                                        Image(systemName: reference.systemImage)
+                                            .foregroundStyle(reference.opensDirectory ? .yellow : .secondary)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(reference.title)
+                                            Text(reference.remotePath)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    if let bookmarkID = reference.bookmarkID {
+                                        Button(role: .destructive) {
+                                            store.removeWorkspaceFileBookmark(id: bookmarkID)
+                                        } label: {
+                                            Label("Unpin", systemImage: "pin.slash")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+
             Section("Browse") {
                 TextField("Remote path", text: $browsePath)
                     .textInputAutocapitalization(.never)
@@ -1843,6 +2705,29 @@ private struct FilesScreen: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            if let targetKind = entry.bookmarkTargetKind, entry.canBookmark {
+                                if store.isWorkspaceFileBookmarked(remotePath: entry.displayPath) {
+                                    Button {
+                                        store.removeWorkspaceFileBookmark(remotePath: entry.displayPath)
+                                    } label: {
+                                        Label("Unpin", systemImage: "pin.slash")
+                                    }
+                                    .tint(.secondary)
+                                } else {
+                                    Button {
+                                        _ = store.addWorkspaceFileBookmark(
+                                            remotePath: entry.displayPath,
+                                            title: entry.name,
+                                            targetKind: targetKind
+                                        )
+                                    } label: {
+                                        Label("Pin", systemImage: "pin")
+                                    }
+                                    .tint(.green)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1871,6 +2756,12 @@ private struct MoreScreen: View {
 
             Section("Workspace") {
                 NavigationLink {
+                    GatewayLabView(chatStore: store.nativeChatStore)
+                } label: {
+                    Label("Gateway Lab", systemImage: "wave.3.right.circle")
+                }
+
+                NavigationLink {
                     ConnectionsScreen()
                 } label: {
                     Label("Connections", systemImage: "server.rack")
@@ -1880,19 +2771,6 @@ private struct MoreScreen: View {
                     CronJobsScreen()
                 } label: {
                     Label("Cron Jobs", systemImage: "clock.arrow.circlepath")
-                }
-            }
-
-            Section("Overview") {
-                if let overview = store.overview {
-                    DetailRow(label: "Hermes Home", value: overview.hermesHome)
-                    DetailRow(label: "Session Store", value: overview.sessionStore?.path ?? "Not found")
-                    DetailRow(label: "USER.md", value: overview.paths.user)
-                    DetailRow(label: "MEMORY.md", value: overview.paths.memory)
-                } else {
-                    Text("Open Connections to inspect the remote Hermes workspace in more detail.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -1932,8 +2810,9 @@ private struct FileEditorSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
-                            await store.saveOpenFile(content: content)
-                            dismiss()
+                            if await store.saveOpenFile(content: content) {
+                                dismiss()
+                            }
                         }
                     }
                 }

@@ -247,8 +247,8 @@ final class HermesTerminalSession: ObservableObject, Identifiable {
         }
     }
 
-    func sendTerminalInput(_ data: ArraySlice<UInt8>) {
-        sendBytes(Array(data))
+    func sendTerminalInput(_ data: [UInt8]) {
+        sendBytes(data)
     }
 
     private func connect() {
@@ -317,7 +317,11 @@ final class HermesTerminalSession: ObservableObject, Identifiable {
                 terminalModes: .init([:])
             )
 
-            try await client.withPTY(request) { @Sendable [weak self] inbound, outbound in
+            let bootstrap = await MainActor.run {
+                self.makeBootstrapSequence()
+            }
+
+            try await client.withPTY(request, command: bootstrap) { @Sendable [weak self] inbound, outbound in
                 guard let self else { return }
                 await MainActor.run {
                     guard self.isCurrentAttempt(attemptID) else { return }
@@ -328,11 +332,6 @@ final class HermesTerminalSession: ObservableObject, Identifiable {
                     self.terminalStatus = "Connected"
                     self.focusInput()
                 }
-
-                let bootstrap = await MainActor.run {
-                    self.makeBootstrapSequence() + "\n"
-                }
-                try await outbound.write(ByteBuffer(string: bootstrap))
 
                 for try await chunk in inbound {
                     switch chunk {
@@ -680,8 +679,13 @@ private final class HermesTerminalBridge: NSObject, TerminalViewDelegate {
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
 
     func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        let originalBytes = Array(data)
+        let result = TerminalOutgoingSanitizer.sanitize(originalBytes)
+        TerminalOutgoingDebugLogger.log(originalBytes: originalBytes, result: result)
+        guard !result.forwardedBytes.isEmpty else { return }
+
         Task { @MainActor [weak session] in
-            session?.sendTerminalInput(data)
+            session?.sendTerminalInput(result.forwardedBytes)
         }
     }
 
@@ -774,6 +778,54 @@ final class HermesNativeTerminalHostView: UIView {
         ])
 
         try? terminalView.setUseMetal(true)
+        configureKeyboardInsetHandling()
+    }
+
+    private func configureKeyboardInsetHandling() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleKeyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleKeyboardWillHide(_:)),
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil
+        )
+    }
+
+    @objc
+    private func handleKeyboardWillChangeFrame(_ notification: Notification) {
+        let frame = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        applyKeyboardInset(for: frame)
+    }
+
+    @objc
+    private func handleKeyboardWillHide(_: Notification) {
+        setKeyboardInset(0)
+    }
+
+    private func applyKeyboardInset(for keyboardFrame: CGRect?) {
+        guard
+            let keyboardFrame,
+            let window
+        else {
+            setKeyboardInset(0)
+            return
+        }
+
+        let overlap = max(0, window.bounds.maxY - keyboardFrame.minY - window.safeAreaInsets.bottom)
+        setKeyboardInset(overlap)
+    }
+
+    private func setKeyboardInset(_ inset: CGFloat) {
+        let resolvedInset = max(0, inset)
+        guard abs(terminalView.contentInset.bottom - resolvedInset) > 0.5 else { return }
+        terminalView.contentInset.bottom = resolvedInset
+        terminalView.verticalScrollIndicatorInsets.bottom = resolvedInset
+        scrollToBottomIfNearEnd()
     }
 }
 

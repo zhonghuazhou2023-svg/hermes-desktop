@@ -216,7 +216,12 @@ final class SSHTransport: @unchecked Sendable {
             host: connection.effectiveTarget,
             port: connection.resolvedPort ?? 22,
             authenticationMethod: { authMethod },
-            hostKeyValidator: .acceptAnything()
+            hostKeyValidator: .custom(
+                ConnectionHostKeyValidator(
+                    connection: connection,
+                    trustStore: HostKeyTrustStore()
+                )
+            )
         )
 
         do {
@@ -242,6 +247,10 @@ final class SSHTransport: @unchecked Sendable {
     }
 
     private func mapConnectionError(_ error: Error, connection: ConnectionProfile) -> Error {
+        if let hostKeyError = error as? HostKeyValidationError {
+            return hostKeyError
+        }
+
         let message = error.localizedDescription
         if message.localizedCaseInsensitiveContains("password") {
             return SSHTransportError.invalidConnection("SSH authentication failed for \(connection.displayDestination).")

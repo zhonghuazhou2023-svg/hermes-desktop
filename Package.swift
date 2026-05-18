@@ -20,7 +20,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/orlandos-nl/Citadel.git", from: "0.12.1"),
+        .package(path: "Vendor/Citadel"),
         .package(path: "Vendor/SwiftTerm")
     ],
     targets: [
@@ -44,7 +44,7 @@ let package = Package(
         ),
         .testTarget(
             name: "HermesDesktopTests",
-            dependencies: ["HermesDesktop"],
+            dependencies: ["HermesDesktop", "HermesPhoneKit"],
             path: "Tests/HermesDesktopTests"
         )
     ]

@@ -221,6 +221,13 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
         ].joined(separator: "|")
     }
 
+    var hostTrustFingerprint: String {
+        [
+            effectiveTarget,
+            resolvedPort.map(String.init) ?? "22"
+        ].joined(separator: "|")
+    }
+
     var effectiveTarget: String {
         trimmedAlias ?? trimmedHost ?? ""
     }
