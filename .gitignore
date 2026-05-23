@@ -9,6 +9,8 @@
 /dist
 /docs/*
 !/docs/distribution.md
+!/docs/mobile/
+!/docs/mobile/*.md
 !/docs/releases/
 !/docs/releases/*.md
 /private/
