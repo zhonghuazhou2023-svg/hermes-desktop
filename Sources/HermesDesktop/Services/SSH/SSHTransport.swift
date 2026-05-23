@@ -39,6 +39,7 @@ final class SSHTransport: @unchecked Sendable {
 
     private enum ConnectionPurpose {
         case service
+        case serviceWithoutMultiplexing
         case terminalShell
     }
 
@@ -70,9 +71,27 @@ final class SSHTransport: @unchecked Sendable {
             purpose: .service
         )
 
-        return try await processRunner.run(
+        let result = try await processRunner.run(
             executableURL: URL(fileURLWithPath: "/usr/bin/ssh"),
             arguments: arguments,
+            standardInput: standardInput
+        )
+
+        guard result.exitCode != 0,
+              shouldRetryWithoutMultiplexing(result) else {
+            return result
+        }
+
+        let retryArguments = sshArguments(
+            for: connection,
+            remoteCommand: remoteCommand,
+            allocateTTY: allocateTTY,
+            purpose: .serviceWithoutMultiplexing
+        )
+
+        return try await processRunner.run(
+            executableURL: URL(fileURLWithPath: "/usr/bin/ssh"),
+            arguments: retryArguments,
             standardInput: standardInput
         )
     }
@@ -177,9 +196,9 @@ final class SSHTransport: @unchecked Sendable {
                 "-o", "ControlPersist=300",
                 "-o", "ControlPath=\(paths.controlPath(for: connection))"
             ])
-        case .terminalShell:
-            // Keep interactive terminal shells isolated from background RPC-style
-            // requests so an open PTY session cannot destabilize profile reloads.
+        case .serviceWithoutMultiplexing, .terminalShell:
+            // Keep direct sessions isolated when multiplexing could be stale or
+            // when an open PTY should not share the background RPC connection.
             arguments.append(contentsOf: [
                 "-o", "ControlMaster=no",
                 "-S", "none"
@@ -277,6 +296,23 @@ final class SSHTransport: @unchecked Sendable {
         }
 
         return "SSH command failed with exit code \(exitCode)."
+    }
+
+    private func shouldRetryWithoutMultiplexing(_ result: SSHCommandResult) -> Bool {
+        let message = [result.stderr, result.stdout]
+            .map { $0.lowercased() }
+            .joined(separator: "\n")
+
+        return message.contains("no route to host") ||
+            message.contains("network is unreachable") ||
+            message.contains("connection timed out") ||
+            message.contains("operation timed out") ||
+            message.contains("connection refused") ||
+            message.contains("connection reset") ||
+            message.contains("connection closed") ||
+            message.contains("broken pipe") ||
+            message.contains("mux_client") ||
+            message.contains("control socket")
     }
 
     private func isLoopbackTarget(_ target: String?) -> Bool {

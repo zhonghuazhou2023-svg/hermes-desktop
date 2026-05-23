@@ -86,6 +86,19 @@ struct SessionMessageMetadataTests {
     }
 
     @Test
+    func displayContentStripsTerminalControlArtifacts() throws {
+        let message = try decodeMessagePayload([
+            "id": "ansi-1",
+            "role": "assistant",
+            "content": "\u{001B}[38;5;55mHello\u{001B}[0m 55m;100m;20m world"
+        ])
+
+        let display = SessionMessageDisplay(message: message)
+
+        #expect(display.content == "Hello world")
+    }
+
+    @Test
     func liveToolSummaryCanBeBuiltWithoutStructuredJSON() {
         let summary = SessionToolMessageSummary(
             title: "exec_command",

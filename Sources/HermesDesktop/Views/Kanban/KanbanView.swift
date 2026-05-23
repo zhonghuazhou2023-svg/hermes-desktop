@@ -351,6 +351,10 @@ struct KanbanView: View {
                 subtitle: boardSubtitle(board)
             ) {
                 VStack(alignment: .leading, spacing: 12) {
+                    if let warning = board.warning {
+                        KanbanWarningBanner(message: warning)
+                    }
+
                     if let warning = dispatcherWarning(for: board) {
                         KanbanWarningBanner(message: warning)
                     }

@@ -2164,6 +2164,7 @@ final class KanbanBrowserService: @unchecked Sendable {
                 "has_hermes_cli": has_cli,
                 "dispatcher": dispatcher_status(),
                 "latest_event_id": None,
+                "warning": None,
                 "tasks": [],
                 "assignees": [],
                 "tenants": [],
@@ -2175,18 +2176,35 @@ final class KanbanBrowserService: @unchecked Sendable {
             conn = None
             try:
                 if kb is not None:
-                    conn = connect_for_board(kb, board_slug, writable=False)
-                    tasks = [
-                        task_object_to_dict(task, conn)
-                        for task in kb.list_tasks(conn, include_archived=include_archived)
-                    ]
                     try:
-                        assignees = kb.known_assignees(conn)
-                    except Exception:
+                        conn = connect_for_board(kb, board_slug, writable=False)
+                        tasks = [
+                            task_object_to_dict(task, conn)
+                            for task in kb.list_tasks(conn, include_archived=include_archived)
+                        ]
+                        try:
+                            assignees = kb.known_assignees(conn)
+                        except Exception:
+                            assignees = direct_assignees(conn)
+                        try:
+                            stats = kb.board_stats(conn)
+                        except Exception:
+                            stats = direct_stats(conn)
+                    except Exception as exc:
+                        try:
+                            if conn is not None:
+                                conn.close()
+                        finally:
+                            conn = None
+                        base["warning"] = (
+                            "The remote Hermes Kanban module could not read this board "
+                            f"({exc}). Showing a direct database view instead. "
+                            "Some Kanban actions may still fail until Hermes Agent and the board database schema are in sync on the host."
+                        )
+                        conn = connect_sqlite_readonly(db_path)
+                        conn.row_factory = sqlite3.Row
+                        tasks = direct_tasks(conn, include_archived)
                         assignees = direct_assignees(conn)
-                    try:
-                        stats = kb.board_stats(conn)
-                    except Exception:
                         stats = direct_stats(conn)
                 else:
                     conn = connect_sqlite_readonly(db_path)
@@ -2250,33 +2268,40 @@ final class KanbanBrowserService: @unchecked Sendable {
             conn = None
             try:
                 if kb is not None:
-                    conn = connect_for_board(kb, board_slug, writable=False)
-                    task = kb.get_task(conn, task_id)
-                    if task is None:
-                        return None
-                    parent_ids = kb.parent_ids(conn, task_id)
-                    child_ids = kb.child_ids(conn, task_id)
-                    comments = [comment_to_dict(item) for item in kb.list_comments(conn, task_id)]
-                    events = [event_to_dict(item) for item in kb.list_events(conn, task_id)]
-                    runs = [run_to_dict(item) for item in kb.list_runs(conn, task_id)]
-                    worker_log = None
                     try:
-                        if supports_keyword(kb.read_worker_log, "board"):
-                            worker_log = kb.read_worker_log(task_id, tail_bytes=65536, board=board_slug)
-                        else:
-                            worker_log = kb.read_worker_log(task_id, tail_bytes=65536)
-                    except Exception:
+                        conn = connect_for_board(kb, board_slug, writable=False)
+                        task = kb.get_task(conn, task_id)
+                        if task is None:
+                            return None
+                        parent_ids = kb.parent_ids(conn, task_id)
+                        child_ids = kb.child_ids(conn, task_id)
+                        comments = [comment_to_dict(item) for item in kb.list_comments(conn, task_id)]
+                        events = [event_to_dict(item) for item in kb.list_events(conn, task_id)]
+                        runs = [run_to_dict(item) for item in kb.list_runs(conn, task_id)]
                         worker_log = None
-                    return {
-                        "task": task_object_to_dict(task, conn),
-                        "parent_ids": parent_ids,
-                        "child_ids": child_ids,
-                        "comments": comments,
-                        "events": events,
-                        "runs": runs,
-                        "worker_log": worker_log,
-                        "home_channels": home_channels_for_task(conn, task_id),
-                    }
+                        try:
+                            if supports_keyword(kb.read_worker_log, "board"):
+                                worker_log = kb.read_worker_log(task_id, tail_bytes=65536, board=board_slug)
+                            else:
+                                worker_log = kb.read_worker_log(task_id, tail_bytes=65536)
+                        except Exception:
+                            worker_log = None
+                        return {
+                            "task": task_object_to_dict(task, conn),
+                            "parent_ids": parent_ids,
+                            "child_ids": child_ids,
+                            "comments": comments,
+                            "events": events,
+                            "runs": runs,
+                            "worker_log": worker_log,
+                            "home_channels": home_channels_for_task(conn, task_id),
+                        }
+                    except Exception:
+                        try:
+                            if conn is not None:
+                                conn.close()
+                        finally:
+                            conn = None
 
                 conn = connect_sqlite_readonly(db_path)
                 conn.row_factory = sqlite3.Row
@@ -2316,23 +2341,37 @@ final class KanbanBrowserService: @unchecked Sendable {
                         })
                 runs = []
                 if table_exists(conn, "task_runs"):
-                    for item in conn.execute(
-                        "SELECT * FROM task_runs WHERE task_id = ? ORDER BY started_at ASC, id ASC",
-                        (task_id,),
-                    ).fetchall():
+                    run_columns = table_columns(conn, "task_runs")
+                    if "task_id" in run_columns:
+                        order_columns = []
+                        if "started_at" in run_columns:
+                            order_columns.append("started_at ASC")
+                        if "id" in run_columns:
+                            order_columns.append("id ASC")
+                        order_sql = ", ".join(order_columns) if order_columns else "rowid ASC"
+                        run_rows = conn.execute(
+                            f"SELECT * FROM task_runs WHERE task_id = ? ORDER BY {order_sql}",
+                            (task_id,),
+                        ).fetchall()
+                    else:
+                        run_rows = []
+                    for item in run_rows:
+                        keys = set(item.keys())
+                        def get(name, default=None):
+                            return item[name] if name in keys else default
                         runs.append({
-                            "id": int_value(item["id"], 0),
-                            "task_id": item["task_id"],
-                            "profile": item["profile"],
-                            "step_key": item["step_key"],
-                            "status": item["status"],
-                            "outcome": item["outcome"],
-                            "summary": item["summary"],
-                            "error": item["error"],
-                            "metadata": parse_json_object(item["metadata"]),
-                            "worker_pid": int_value(item["worker_pid"]),
-                            "started_at": int_value(item["started_at"], 0),
-                            "ended_at": int_value(item["ended_at"]),
+                            "id": int_value(get("id"), 0),
+                            "task_id": get("task_id"),
+                            "profile": get("profile"),
+                            "step_key": get("step_key"),
+                            "status": get("status", ""),
+                            "outcome": get("outcome"),
+                            "summary": get("summary"),
+                            "error": get("error"),
+                            "metadata": parse_json_object(get("metadata")),
+                            "worker_pid": int_value(get("worker_pid")),
+                            "started_at": int_value(get("started_at"), 0),
+                            "ended_at": int_value(get("ended_at")),
                         })
                 log_path = worker_log_path(task_id, board_slug)
                 worker_log = None

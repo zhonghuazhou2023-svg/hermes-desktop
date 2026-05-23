@@ -37,6 +37,22 @@ struct RemotePythonScriptTests {
         #expect(source.contains(#"active_hermes_home = resolved_hermes_home()"#))
         #expect(source.contains(#"kanban_home_path() / ".env""#))
         #expect(source.contains("load_hermes_env_file()"))
+        #expect(source.contains("tasks = direct_tasks(conn, include_archived)"))
+        #expect(source.contains("run_columns = table_columns(conn, \"task_runs\")"))
+    }
+
+    @Test
+    func sessionBrowserRefreshesModelFromMessageMetadata() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/HermesDesktop/Services/SessionBrowserService.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        #expect(source.contains("def latest_model_for_session(context, session_id, fallback=None):"))
+        #expect(source.contains("model = latest_model_for_session(context, session_id, model)"))
+        #expect(source.contains("metadata.get(\"active_model\")"))
     }
 
     @Test

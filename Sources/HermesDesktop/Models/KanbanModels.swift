@@ -182,6 +182,7 @@ struct KanbanBoard: Codable, Hashable, Sendable {
     let hasHermesCLI: Bool
     let dispatcher: KanbanDispatcherStatus?
     let latestEventID: Int?
+    let warning: String?
     let tasks: [KanbanTask]
     let assignees: [KanbanAssignee]
     let tenants: [String]
@@ -195,6 +196,7 @@ struct KanbanBoard: Codable, Hashable, Sendable {
         case hasHermesCLI = "has_hermes_cli"
         case dispatcher
         case latestEventID = "latest_event_id"
+        case warning
         case tasks
         case assignees
         case tenants
@@ -209,6 +211,7 @@ struct KanbanBoard: Codable, Hashable, Sendable {
         hasHermesCLI: false,
         dispatcher: nil,
         latestEventID: nil,
+        warning: nil,
         tasks: [],
         assignees: [],
         tenants: [],

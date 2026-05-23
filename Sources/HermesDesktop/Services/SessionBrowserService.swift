@@ -153,6 +153,7 @@ final class SessionBrowserService: @unchecked Sendable {
                     model = None
                     if context["session_model_column"]:
                         model = sanitize_model(record.get(context["session_model_column"]))
+                    model = latest_model_for_session(context, session_id, model)
 
                     items.append({
                         "id": session_id,
@@ -522,16 +523,46 @@ final class SessionBrowserService: @unchecked Sendable {
                 return direct
 
             metadata = record.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata_text = stringify(metadata)
+                if metadata_text:
+                    try:
+                        parsed_metadata = json.loads(metadata_text)
+                        if isinstance(parsed_metadata, dict):
+                            metadata = parsed_metadata
+                    except Exception:
+                        pass
             if isinstance(metadata, dict):
                 nested = sanitize_model(
                     metadata.get("model") or
                     metadata.get("model_name") or
-                    metadata.get("default_model")
+                    metadata.get("default_model") or
+                    metadata.get("active_model")
                 )
                 if nested:
                     return nested
 
             return None
+
+        def latest_model_for_session(context, session_id, fallback=None):
+            query = (
+                f"SELECT * FROM {quote_ident(context['message_table'])} "
+                f"WHERE {quote_ident(context['message_session_id_column'])} = ? "
+                "ORDER BY "
+            )
+            if context["message_timestamp_column"]:
+                query += f"{quote_ident(context['message_timestamp_column'])} DESC, "
+            query += f"{quote_ident(context['message_id_column'])} DESC LIMIT 80"
+            try:
+                rows = context["connection"].execute(query, (session_id,)).fetchall()
+            except Exception:
+                return fallback
+            for row in rows:
+                record = dict(zip(context["message_columns"], row))
+                model = extract_model_from_record(record)
+                if model:
+                    return model
+            return fallback
 
         def parse_timestamp_value(value):
             if value is None:

@@ -218,7 +218,6 @@ final class TerminalViewHost: NSObject, LocalProcessTerminalViewDelegate {
             }
 
             self.hostView.submit(initialInput)
-            hostView.submit(initialInput)
         }
     }
 }

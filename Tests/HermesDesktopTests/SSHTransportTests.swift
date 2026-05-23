@@ -90,6 +90,40 @@ struct SSHTransportTests {
     }
 
     @Test
+    func executeRetriesReachabilityFailuresWithoutControlMaster() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let runner = SequenceSSHProcessRunner(results: [
+            SSHCommandResult(stdout: "", stderr: "ssh: connect to host example.com port 22: No route to host", exitCode: 255),
+            SSHCommandResult(stdout: "ok", stderr: "", exitCode: 0)
+        ])
+        let transport = SSHTransport(
+            paths: makeTestAppPaths(root: root),
+            processRunner: runner
+        )
+        let connection = ConnectionProfile(
+            label: "Prod",
+            sshHost: "example.com",
+            sshUser: "alice"
+        ).updated()
+
+        let result = try await transport.execute(
+            on: connection,
+            remoteCommand: "printf ok",
+            allocateTTY: false
+        )
+
+        let invocations = await runner.invocations
+        #expect(result.stdout == "ok")
+        #expect(invocations.count == 2)
+        #expect(invocations[0].arguments.contains("ControlMaster=auto"))
+        #expect(invocations[1].arguments.contains("ControlMaster=no"))
+        #expect(invocations[1].arguments.contains("-S"))
+        #expect(invocations[1].arguments.contains("none"))
+    }
+
+    @Test
     func remoteFailureMentionsNonInteractivePythonPath() {
         let transport = SSHTransport(paths: AppPaths())
         let connection = ConnectionProfile(
@@ -179,5 +213,30 @@ private actor RecordingSSHProcessRunner: SSHProcessRunning {
             standardInput: standardInput
         )
         return result
+    }
+}
+
+private actor SequenceSSHProcessRunner: SSHProcessRunning {
+    private var results: [SSHCommandResult]
+    private(set) var invocations: [SSHProcessInvocation] = []
+
+    init(results: [SSHCommandResult]) {
+        self.results = results
+    }
+
+    func run(
+        executableURL: URL,
+        arguments: [String],
+        standardInput: Data?
+    ) async throws -> SSHCommandResult {
+        invocations.append(SSHProcessInvocation(
+            executableURL: executableURL,
+            arguments: arguments,
+            standardInput: standardInput
+        ))
+        guard !results.isEmpty else {
+            return SSHCommandResult(stdout: "", stderr: "unexpected invocation", exitCode: 1)
+        }
+        return results.removeFirst()
     }
 }

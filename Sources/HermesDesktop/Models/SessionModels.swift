@@ -204,7 +204,7 @@ struct SessionMessageDisplay: Identifiable, Hashable, Sendable {
     init(message: SessionMessage) {
         id = message.id
         role = message.role
-        content = message.content
+        content = message.content?.strippingTerminalControlArtifacts
         timestampText = message.timestamp?.dateValue.map(DateFormatters.shortDateTimeString(from:))
 
         let displayMetadata = message.displayMetadata ?? [:]
@@ -220,6 +220,35 @@ struct SessionMessageDisplay: Identifiable, Hashable, Sendable {
 
     var isToolMessage: Bool {
         toolSummary != nil
+    }
+}
+
+private extension String {
+    var strippingTerminalControlArtifacts: String {
+        var cleaned = self
+        let escape = "\u{001B}"
+        let bell = "\u{0007}"
+        cleaned = cleaned.replacingOccurrences(
+            of: "\(escape)\\][^\(bell)\(escape)]*(?:\(bell)|\(escape)\\\\)",
+            with: "",
+            options: .regularExpression
+        )
+        cleaned = cleaned.replacingOccurrences(
+            of: "\(escape)\\[[0-?]*[ -/]*[@-~]",
+            with: "",
+            options: .regularExpression
+        )
+        cleaned = cleaned.replacingOccurrences(
+            of: "(?m)(^|\\s)(?:\\d{1,3}m;?){2,}(?:\\s+|(?=[.,:!?)]|$))",
+            with: "$1",
+            options: .regularExpression
+        )
+        cleaned = cleaned.replacingOccurrences(
+            of: "(?m)(^|\\s)(?:\\d{1,3};){1,8}\\d{1,3}m(?:\\s+|(?=[.,:!?)]|$))",
+            with: "$1",
+            options: .regularExpression
+        )
+        return cleaned
     }
 }
 
