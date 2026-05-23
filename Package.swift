@@ -44,8 +44,13 @@ let package = Package(
         ),
         .testTarget(
             name: "HermesDesktopTests",
-            dependencies: ["HermesDesktop", "HermesPhoneKit"],
+            dependencies: ["HermesDesktop"],
             path: "Tests/HermesDesktopTests"
+        ),
+        .testTarget(
+            name: "HermesPhoneKitTests",
+            dependencies: ["HermesPhoneKit"],
+            path: "Tests/HermesPhoneKitTests"
         )
     ]
 )

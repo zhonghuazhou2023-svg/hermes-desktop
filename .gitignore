@@ -2,6 +2,10 @@
 /AGENTS.md
 /.build
 /.build-tests
+/.cache
+/.cache/
+/.cache-*
+/.deriveddata*
 /dist
 /docs/*
 !/docs/distribution.md
@@ -9,11 +13,13 @@
 !/docs/releases/*.md
 /private/
 /.swiftpm-home
+/.swiftpm-cache
 /.vscode
 /packaging/AppIcon-1024.png
 /packaging/AppIcon.iconset/
 /packaging/HermesDesktop.icns
 /Packages
+/Vendor/Citadel/Package.resolved
 xcuserdata/
 DerivedData/
 .swiftpm/configuration/registries.json
