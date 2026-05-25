@@ -100,9 +100,9 @@ public struct HermesPhoneRootView: View {
                 .environmentObject(store)
         }
         .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .background else { return }
+            guard newPhase == .active else { return }
             Task { @MainActor in
-                await store.nativeChatStore.closeChat()
+                await store.nativeChatStore.refreshCurrentConversationFromRemote()
             }
         }
     }

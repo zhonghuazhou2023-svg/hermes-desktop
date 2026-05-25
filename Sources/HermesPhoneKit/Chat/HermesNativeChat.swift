@@ -609,6 +609,21 @@ final class HermesNativeChatStore: ObservableObject {
         phoneStore?.ensureTerminalConnected()
     }
 
+    func refreshCurrentConversationFromRemote() async {
+        guard let currentSessionID, hasConversationContent else { return }
+        guard !isResumingSession else { return }
+
+        do {
+            let history = try await phoneStore?.transcript(for: currentSessionID) ?? []
+            guard !history.isEmpty else { return }
+            applyTranscript(history)
+            pendingAPIHistory = messages
+            sessionStatus = "Chat resumed"
+        } catch {
+            appendDiagnostic("Conversation refresh failed for \(currentSessionID): \(error.localizedDescription)")
+        }
+    }
+
     func continueSessionByIDInChat(_ sessionID: String) async {
         let summary = SessionSummary(
             id: sessionID,
