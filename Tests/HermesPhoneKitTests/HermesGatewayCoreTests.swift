@@ -102,6 +102,53 @@ struct HermesGatewayCoreTests {
     }
 
     @Test
+    func gatewayTextSanitizerRemovesAnsiEscapes() {
+        let dirty = "\u{1B}[1;3mUnknown command\u{1B}[0m: /creative/test\n\u{1B}[2mHint\u{1B}[0m"
+        #expect(HermesGatewayTextSanitizer.sanitize(dirty) == "Unknown command: /creative/test\nHint")
+
+        let osc = "before\u{1B}]0;title\u{07}after"
+        #expect(HermesGatewayTextSanitizer.sanitize(osc) == "beforeafter")
+    }
+
+    @Test
+    func slashCommandCatalogParserHandlesNestedGatewayCatalogs() {
+        let catalog = JSONValue.object([
+            "sections": .array([
+                .object([
+                    "title": .string("Session"),
+                    "commands": .array([
+                        .object([
+                            "command": .string("/status"),
+                            "description": .string("Show session info")
+                        ]),
+                        .object([
+                            "usage": .string("/goal <text>"),
+                            "summary": .string("Set a standing goal")
+                        ])
+                    ])
+                ]),
+                .object([
+                    "title": .string("Skills"),
+                    "items": .array([
+                        .object([
+                            "name": .string("/gif-search"),
+                            "type": .string("skill"),
+                            "help": .string("Search GIFs")
+                        ])
+                    ])
+                ])
+            ])
+        ])
+
+        let entries = HermesSlashCommandCatalogParser.parse(catalog)
+        #expect(entries.map(\.name).contains("/status"))
+        #expect(entries.map(\.name).contains("/goal"))
+        #expect(entries.map(\.name).contains("/gif-search"))
+        #expect(entries.first { $0.name == "/goal" }?.usage == "/goal <text>")
+        #expect(entries.first { $0.name == "/gif-search" }?.isSkill == true)
+    }
+
+    @Test
     func capabilityProbeParsesBooleansAndReasons() {
         #expect(HermesNativeChatCapabilityProbe.bool(from: "1\n"))
         #expect(HermesNativeChatCapabilityProbe.bool(from: "true"))

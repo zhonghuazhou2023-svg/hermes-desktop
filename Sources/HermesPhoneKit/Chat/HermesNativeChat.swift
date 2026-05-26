@@ -89,6 +89,52 @@ struct HermesGatewayPreview: Hashable, Sendable {
     var payloadPreview: String?
 }
 
+struct HermesChatCommandSuggestion: Identifiable, Hashable, Sendable {
+    let command: String
+    let title: String
+    let summary: String
+    let acceptsDraftAsArgument: Bool
+
+    var id: String { command }
+
+    static let dailyFallbacks: [HermesChatCommandSuggestion] = [
+        HermesChatCommandSuggestion(command: "/stop", title: "Stop", summary: "Interrupt the running agent.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/help", title: "Help", summary: "Show Hermes command help.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/status", title: "Status", summary: "Show session, model, profile and working state.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/model", title: "Model", summary: "Show or change the current model.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/title", title: "Title", summary: "Set the current session title.", acceptsDraftAsArgument: true),
+        HermesChatCommandSuggestion(command: "/goal", title: "Goal", summary: "Set a standing goal Hermes works toward across turns.", acceptsDraftAsArgument: true),
+        HermesChatCommandSuggestion(command: "/goal status", title: "Goal Status", summary: "Check the active goal loop.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/goal pause", title: "Pause Goal", summary: "Pause goal auto-continuation.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/goal resume", title: "Resume Goal", summary: "Resume a paused goal loop.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/goal clear", title: "Clear Goal", summary: "Clear the active goal.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/retry", title: "Retry", summary: "Retry the last message.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/undo", title: "Undo", summary: "Remove the last user/assistant exchange.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/queue", title: "Queue", summary: "Queue a prompt for the next turn.", acceptsDraftAsArgument: true),
+        HermesChatCommandSuggestion(command: "/steer", title: "Steer", summary: "Inject guidance after the next tool call without interrupting.", acceptsDraftAsArgument: true),
+        HermesChatCommandSuggestion(command: "/compress", title: "Compress", summary: "Manually compress conversation context.", acceptsDraftAsArgument: true),
+        HermesChatCommandSuggestion(command: "/usage", title: "Usage", summary: "Show token usage, cost and quota details.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/tools", title: "Tools", summary: "List or manage available tools for this session.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/toolsets", title: "Toolsets", summary: "List available toolsets.", acceptsDraftAsArgument: false),
+        HermesChatCommandSuggestion(command: "/reload-skills", title: "Reload Skills", summary: "Re-scan installed skills on the host.", acceptsDraftAsArgument: false)
+    ]
+
+    static func dailySuggestions(catalog: [HermesSlashCommandCatalogEntry]) -> [HermesChatCommandSuggestion] {
+        guard !catalog.isEmpty else { return dailyFallbacks }
+        let catalogByName = Dictionary(uniqueKeysWithValues: catalog.map { ($0.name.lowercased(), $0) })
+        return dailyFallbacks.map { fallback in
+            let lookupName = fallback.command.split(separator: " ").first.map(String.init) ?? fallback.command
+            guard let entry = catalogByName[lookupName.lowercased()] else { return fallback }
+            return HermesChatCommandSuggestion(
+                command: fallback.command,
+                title: fallback.title,
+                summary: entry.description ?? fallback.summary,
+                acceptsDraftAsArgument: fallback.acceptsDraftAsArgument
+            )
+        }
+    }
+}
+
 enum HermesGatewayPreviewBuilder {
     static func preview(
         from payload: [String: JSONValue],
@@ -137,7 +183,7 @@ enum HermesGatewayPreviewBuilder {
     }
 
     private static func sanitize(_ value: String) -> String {
-        let compact = value
+        let compact = HermesGatewayTextSanitizer.sanitize(value)
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
         guard compact.count > 220 else { return compact }
@@ -158,6 +204,9 @@ final class HermesNativeChatStore: ObservableObject {
     @Published var continuation: HermesChatContinuation?
     @Published var diagnostics: [String] = []
     @Published var rawEvents: [HermesGatewayEvent] = []
+    @Published var slashCommandCatalog: [HermesSlashCommandCatalogEntry] = []
+    @Published var isLoadingSlashCommandCatalog = false
+    @Published var slashCommandCatalogError: String?
     @Published var draftMessage = ""
     @Published var lastError: String?
     @Published var showDiagnostics = false
@@ -258,6 +307,10 @@ final class HermesNativeChatStore: ObservableObject {
         toolCards.max(by: { $0.updatedAt < $1.updatedAt })
     }
 
+    var dailyCommandSuggestions: [HermesChatCommandSuggestion] {
+        HermesChatCommandSuggestion.dailySuggestions(catalog: slashCommandCatalog)
+    }
+
     var activeLineageSessionIDs: Set<String> {
         var ids = Set<String>()
         if let currentSessionID {
@@ -304,6 +357,8 @@ final class HermesNativeChatStore: ObservableObject {
         await disconnectFromGateway(resetMessages: true)
         bootstrapStatus = nil
         gatewayInfo = [:]
+        slashCommandCatalog = []
+        slashCommandCatalogError = nil
         currentSessionID = nil
         pendingResumeSession = nil
         pendingResumeTitle = nil
@@ -553,6 +608,41 @@ final class HermesNativeChatStore: ObservableObject {
         return lastError ?? "Chat test sent. Follow the live response below."
     }
 
+    func loadSlashCommandCatalogIfNeeded(force: Bool = false) async {
+        if isLoadingSlashCommandCatalog { return }
+        if !force && !slashCommandCatalog.isEmpty { return }
+
+        isLoadingSlashCommandCatalog = true
+        slashCommandCatalogError = nil
+        defer { isLoadingSlashCommandCatalog = false }
+
+        let requestedFingerprint = phoneStore?.activeWorkspaceScopeFingerprint
+        await ensureGatewaySession()
+        guard phoneStore?.activeWorkspaceScopeFingerprint == requestedFingerprint else { return }
+        guard let session = gatewaySession else { return }
+
+        var params: [String: JSONValue] = [:]
+        if let currentSessionID {
+            params["session_id"] = .string(currentSessionID)
+        }
+
+        do {
+            let result = try await session.request(
+                method: "commands.catalog",
+                params: params,
+                timeout: 30
+            )
+            guard phoneStore?.activeWorkspaceScopeFingerprint == requestedFingerprint else { return }
+            slashCommandCatalog = HermesSlashCommandCatalogParser.parse(result)
+            if slashCommandCatalog.isEmpty {
+                appendDiagnostic("commands.catalog returned no usable command entries; using curated mobile shortcuts.")
+            }
+        } catch {
+            slashCommandCatalogError = error.localizedDescription
+            appendDiagnostic("commands.catalog failed: \(error.localizedDescription)")
+        }
+    }
+
     func interrupt() async {
         await ensureGatewaySession()
         guard let session = gatewaySession, let currentSessionID else { return }
@@ -732,6 +822,12 @@ final class HermesNativeChatStore: ObservableObject {
     ) async throws {
         let params = slashCommandParams(command, sessionID: sessionID)
 
+        if slashCommandParts(command).name == "commands" {
+            let result = try await session.request(method: "commands.catalog", params: ["session_id": .string(sessionID)], timeout: 30)
+            appendSystemNotice(commandCatalogSummary(result))
+            return
+        }
+
         do {
             let result = try await session.request(method: "slash.exec", params: params, timeout: 120)
             _ = try await handleCommandResult(result, originalCommand: command, session: session, sessionID: sessionID)
@@ -753,6 +849,10 @@ final class HermesNativeChatStore: ObservableObject {
         aliasDepth: Int = 0
     ) async throws -> Bool {
         let commandResult = HermesGatewayCommandResult(result)
+        if let notice = commandResult.notice {
+            appendSystemNotice(notice)
+        }
+
         switch commandResult.primaryAction {
         case .submit(let message):
             _ = try await session.request(
@@ -765,7 +865,12 @@ final class HermesNativeChatStore: ObservableObject {
             )
             return true
         case .render(let output):
-            appendSystemNotice(output)
+            if isBareSlashCommand(originalCommand, named: "model"), output == "(no output)" {
+                let result = try await session.request(method: "model.options", params: ["session_id": .string(sessionID)], timeout: 30)
+                appendSystemNotice(modelOptionsSummary(result))
+            } else {
+                appendSystemNotice(output)
+            }
             return true
         case .alias(let target):
             guard aliasDepth < 3 else {
@@ -792,19 +897,126 @@ final class HermesNativeChatStore: ObservableObject {
     }
 
     private func slashCommandParams(_ command: String, sessionID: String) -> [String: JSONValue] {
-        [
+        let parts = slashCommandParts(command)
+        return [
             "session_id": .string(sessionID),
             "line": .string(command),
             "text": .string(command),
             "command": .string(command),
-            "input": .string(command)
+            "input": .string(command),
+            "name": .string(parts.name),
+            "arg": .string(parts.arg)
         ]
+    }
+
+    private func slashCommandParts(_ command: String) -> (name: String, arg: String) {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutSlash = trimmed.hasPrefix("/") ? String(trimmed.dropFirst()) : trimmed
+        let pieces = withoutSlash.split(maxSplits: 1, whereSeparator: \.isWhitespace)
+        let name = pieces.first.map { String($0).lowercased() } ?? ""
+        let arg = pieces.count > 1 ? String(pieces[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        return (name, arg)
+    }
+
+    private func isBareSlashCommand(_ command: String, named name: String) -> Bool {
+        let parts = slashCommandParts(command)
+        return parts.name == name && parts.arg.isEmpty
     }
 
     private func shouldFallbackToCommandDispatch(_ error: HermesGatewayError) -> Bool {
         guard case .remote(_, let message) = error else { return false }
         let lowered = message.lowercased()
-        return lowered.contains("command.dispatch") || lowered.contains("pending input") || lowered.contains("skill")
+        if lowered.contains("not a quick/plugin/skill command") { return false }
+        return lowered.contains("command.dispatch") ||
+            lowered.contains("pending input") ||
+            lowered.contains("skill command") ||
+            (lowered.contains("dispatch") && lowered.contains("skill"))
+    }
+
+    private func modelOptionsSummary(_ result: JSONValue?) -> String {
+        guard let object = result?.objectValue else {
+            return "No model options available."
+        }
+
+        let model = string(in: object, keys: ["model", "current_model"]) ?? "Unknown"
+        let provider = string(in: object, keys: ["provider", "current_provider"])
+        var lines = ["Current model: \(model)\(provider.map { " (\($0))" } ?? "")"]
+
+        let providers = object["providers"]?.arrayValue?.compactMap(\.objectValue) ?? []
+        if let currentProvider = providers.first(where: { $0["is_current"]?.boolValue == true }) {
+            let providerName = string(in: currentProvider, keys: ["name", "slug"]) ?? provider ?? "Current provider"
+            let models = currentProvider["models"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            if !models.isEmpty {
+                lines.append("")
+                lines.append("\(providerName) models:")
+                lines.append(contentsOf: models.prefix(8).map { $0 == model ? "• \($0) ✓" : "• \($0)" })
+                if models.count > 8 {
+                    lines.append("• … \(models.count - 8) more")
+                }
+            }
+        }
+
+        let configuredProviders = providers.filter { $0["authenticated"]?.boolValue == true }
+        if !configuredProviders.isEmpty {
+            lines.append("")
+            lines.append("Configured providers:")
+            lines.append(contentsOf: configuredProviders.prefix(8).compactMap { provider in
+                let slug = string(in: provider, keys: ["slug"])
+                let name = string(in: provider, keys: ["name"]) ?? slug
+                guard let name else { return nil }
+                let currentMarker = provider["is_current"]?.boolValue == true ? " ✓" : ""
+                return "• \(name)\(currentMarker)"
+            })
+            if configuredProviders.count > 8 {
+                lines.append("• … \(configuredProviders.count - 8) more")
+            }
+        }
+
+        lines.append("")
+        lines.append("To switch: /model <model> --provider <provider>")
+        return lines.joined(separator: "\n")
+    }
+
+    private func commandCatalogSummary(_ result: JSONValue?) -> String {
+        guard let object = result?.objectValue else {
+            return "No command catalog available."
+        }
+
+        if let categories = object["categories"]?.arrayValue?.compactMap(\.objectValue), !categories.isEmpty {
+            var lines = ["Available commands"]
+            for category in categories.prefix(8) {
+                guard let name = string(in: category, keys: ["name"]) else { continue }
+                let pairs = category["pairs"]?.arrayValue?.compactMap(\.arrayValue) ?? []
+                let commands = pairs.prefix(12).compactMap { $0.first?.stringValue }
+                guard !commands.isEmpty else { continue }
+                lines.append("")
+                lines.append(name)
+                lines.append(commands.joined(separator: "  "))
+            }
+            if let skillCount = object["skill_count"]?.stringValue, skillCount != "0" {
+                lines.append("")
+                lines.append("Skill commands: \(skillCount) installed. Search the Skills section to insert one.")
+            }
+            return lines.joined(separator: "\n")
+        }
+
+        let pairs = object["pairs"]?.arrayValue?.compactMap(\.arrayValue) ?? []
+        let commands = pairs.prefix(80).compactMap { pair -> String? in
+            guard let command = pair.first?.stringValue else { return nil }
+            let description = pair.count > 1 ? pair[1].stringValue : nil
+            return description.map { "\(command) — \($0)" } ?? command
+        }
+        return commands.isEmpty ? "No commands available." : commands.joined(separator: "\n")
+    }
+
+    private func string(in object: [String: JSONValue], keys: [String]) -> String? {
+        for key in keys {
+            if let value = object[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !value.isEmpty {
+                return HermesGatewayTextSanitizer.sanitize(value)
+            }
+        }
+        return nil
     }
 
     private func waitForBootstrapProbe() async {
@@ -982,10 +1194,12 @@ final class HermesNativeChatStore: ObservableObject {
     }
 
     private func appendSystemNotice(_ message: String) {
-        guard messages.last?.role != .system || messages.last?.text != message else {
+        let sanitizedMessage = HermesGatewayTextSanitizer.sanitize(message).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sanitizedMessage.isEmpty else { return }
+        guard messages.last?.role != .system || messages.last?.text != sanitizedMessage else {
             return
         }
-        messages.append(HermesChatMessage(role: .system, text: message))
+        messages.append(HermesChatMessage(role: .system, text: sanitizedMessage))
     }
 
     private func applyTranscript(_ transcript: [SessionMessage]) {
@@ -1253,14 +1467,16 @@ final class HermesNativeChatStore: ObservableObject {
     }
 
     private func appendDiagnostic(_ line: String) {
-        diagnostics.append(line)
+        let sanitizedLine = HermesGatewayTextSanitizer.sanitize(line)
+        guard !sanitizedLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        diagnostics.append(sanitizedLine)
         if diagnostics.count > 200 {
             diagnostics.removeFirst(diagnostics.count - 200)
         }
     }
 
     private func present(_ error: Error) {
-        let message = error.localizedDescription
+        let message = HermesGatewayTextSanitizer.sanitize(error.localizedDescription)
         lastError = message
         sessionStatus = message
         connectionStatus = "Chat error"
@@ -1271,7 +1487,7 @@ final class HermesNativeChatStore: ObservableObject {
         for key in keys {
             if let value = payload[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
                !value.isEmpty {
-                return value
+                return HermesGatewayTextSanitizer.sanitize(value)
             }
         }
         return nil
@@ -2136,11 +2352,16 @@ private struct ChatComposerView: View {
             }
         }
         .sheet(isPresented: $isPresentingInsertSheet) {
-            SkillInsertSheet(
+            ChatInsertSheet(
+                commands: chatStore.dailyCommandSuggestions,
+                isLoadingCommands: chatStore.isLoadingSlashCommandCatalog,
+                commandsError: chatStore.slashCommandCatalogError,
                 skills: skills,
-                isLoading: isLoadingSkills,
-                onLoad: loadSkills,
-                onSelect: insertSkill
+                isLoadingSkills: isLoadingSkills,
+                onLoadCommands: { await chatStore.loadSlashCommandCatalogIfNeeded() },
+                onLoadSkills: loadSkills,
+                onSelectCommand: insertCommand,
+                onSelectSkill: insertSkill
             )
             .presentationDetents([.medium, .large])
         }
@@ -2174,73 +2395,50 @@ private struct ChatComposerView: View {
         return nil
     }
 
+    private func insertCommand(_ command: HermesChatCommandSuggestion) {
+        insertSlashCommand(command.command, acceptsDraftAsArgument: command.acceptsDraftAsArgument)
+    }
+
     private func insertSkill(_ skill: SkillSummary) {
-        let command = "/\(skill.relativePath) "
+        insertSlashCommand("/\(skill.slug)", acceptsDraftAsArgument: true)
+    }
+
+    private func insertSlashCommand(_ command: String, acceptsDraftAsArgument: Bool) {
         let trimmedDraft = chatStore.draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedDraft.isEmpty {
-            chatStore.draftMessage = command
-        } else if chatStore.draftMessage.hasSuffix("\n") || chatStore.draftMessage.hasSuffix(" ") {
-            chatStore.draftMessage += command
+            chatStore.draftMessage = acceptsDraftAsArgument ? "\(command) " : command
+        } else if acceptsDraftAsArgument && !trimmedDraft.hasPrefix("/") {
+            chatStore.draftMessage = "\(command) \(trimmedDraft)"
         } else {
-            chatStore.draftMessage += "\n\(command)"
+            chatStore.draftMessage = acceptsDraftAsArgument ? "\(command) " : command
         }
         isPresentingInsertSheet = false
         isMessageFocused = true
     }
 }
 
-private struct SkillInsertSheet: View {
+private struct ChatInsertSheet: View {
     @Environment(\.dismiss) private var dismiss
+    let commands: [HermesChatCommandSuggestion]
+    let isLoadingCommands: Bool
+    let commandsError: String?
     let skills: [SkillSummary]
-    let isLoading: Bool
-    let onLoad: () async -> Void
-    let onSelect: (SkillSummary) -> Void
+    let isLoadingSkills: Bool
+    let onLoadCommands: () async -> Void
+    let onLoadSkills: () async -> Void
+    let onSelectCommand: (HermesChatCommandSuggestion) -> Void
+    let onSelectSkill: (SkillSummary) -> Void
     @State private var query = ""
 
     var body: some View {
         NavigationStack {
             List {
-                if isLoading && skills.isEmpty {
-                    HStack {
-                        Spacer()
-                        ProgressView("Loading skills...")
-                        Spacer()
-                    }
-                } else if filteredSkills.isEmpty {
-                    ContentUnavailableView(
-                        "No Skills",
-                        systemImage: "book.closed",
-                        description: Text("Enabled Hermes skills will appear here.")
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                } else {
-                    Section("Skills") {
-                        ForEach(filteredSkills) { skill in
-                            Button {
-                                onSelect(skill)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(skill.resolvedName)
-                                        .font(.headline)
-                                    Text("/\(skill.relativePath)")
-                                        .font(.caption.monospaced())
-                                        .foregroundStyle(.secondary)
-                                    if let description = skill.trimmedDescription {
-                                        Text(description)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                commandSection
+                skillSections
             }
             .navigationTitle("Insert")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "Search skills")
+            .searchable(text: $query, prompt: "Search commands or skills")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {
@@ -2249,15 +2447,167 @@ private struct SkillInsertSheet: View {
                 }
             }
             .task {
+                await onLoadCommands()
+            }
+            .task {
                 if skills.isEmpty {
-                    await onLoad()
+                    await onLoadSkills()
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var commandSection: some View {
+        Section {
+            if isLoadingCommands && commands.isEmpty {
+                HStack {
+                    Spacer()
+                    ProgressView("Loading commands...")
+                    Spacer()
+                }
+            }
+
+            ForEach(filteredCommands) { command in
+                Button {
+                    onSelectCommand(command)
+                } label: {
+                    ChatCommandRow(command: command)
+                }
+            }
+
+            if filteredCommands.isEmpty && !isLoadingCommands && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("No matching commands")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let commandsError, !commandsError.isEmpty {
+                Text("Using mobile shortcuts because the command catalog is unavailable.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Commands")
+        } footer: {
+            Text("Commands are dispatched through the Hermes TUI runtime. Use /commands for the complete catalog.")
+        }
+    }
+
+    @ViewBuilder
+    private var skillSections: some View {
+        if isLoadingSkills && skills.isEmpty {
+            Section("Skills") {
+                HStack {
+                    Spacer()
+                    ProgressView("Loading skills...")
+                    Spacer()
+                }
+            }
+        } else if filteredSkills.isEmpty {
+            Section("Skills") {
+                ContentUnavailableView(
+                    "No Skills",
+                    systemImage: "book.closed",
+                    description: Text(skills.isEmpty ? "Enabled Hermes skills will appear here." : "No skills match this search.")
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+            }
+        } else {
+            ForEach(groupedFilteredSkills) { group in
+                Section("Skills · \(group.category)") {
+                    ForEach(group.skills) { skill in
+                        Button {
+                            onSelectSkill(skill)
+                        } label: {
+                            ChatSkillRow(skill: skill)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var filteredCommands: [HermesChatCommandSuggestion] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return commands }
+        return commands.filter { command in
+            [command.command, command.title, command.summary].contains { value in
+                value.localizedCaseInsensitiveContains(trimmedQuery)
             }
         }
     }
 
     private var filteredSkills: [SkillSummary] {
         skills.filter { $0.matchesSearch(query) }
+    }
+
+    private var groupedFilteredSkills: [SkillInsertGroup] {
+        let groups = Dictionary(grouping: filteredSkills) { $0.resolvedCategory }
+        return groups
+            .map { category, skills in
+                SkillInsertGroup(
+                    category: category,
+                    skills: skills.sorted { lhs, rhs in
+                        lhs.resolvedName.localizedStandardCompare(rhs.resolvedName) == .orderedAscending
+                    }
+                )
+            }
+            .sorted { lhs, rhs in
+                lhs.category.localizedStandardCompare(rhs.category) == .orderedAscending
+            }
+    }
+}
+
+private struct SkillInsertGroup: Identifiable, Hashable {
+    let category: String
+    let skills: [SkillSummary]
+
+    var id: String { category }
+}
+
+private struct ChatCommandRow: View {
+    let command: HermesChatCommandSuggestion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(command.command)
+                    .font(.callout.monospaced())
+                    .foregroundStyle(Color(red: 0.18, green: 0.72, blue: 0.62))
+                Text(command.title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+            }
+            Text(command.summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+private struct ChatSkillRow: View {
+    let skill: SkillSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(skill.resolvedName)
+                .font(.headline)
+                .foregroundStyle(.primary)
+            Text("/\(skill.slug)")
+                .font(.caption.monospaced())
+                .foregroundStyle(Color(red: 0.18, green: 0.72, blue: 0.62))
+            if let description = skill.trimmedDescription {
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 3)
     }
 }
 

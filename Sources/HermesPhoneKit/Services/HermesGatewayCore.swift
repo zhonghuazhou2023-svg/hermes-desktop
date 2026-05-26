@@ -23,7 +23,68 @@ enum HermesGatewayError: LocalizedError, Equatable, Sendable {
         case .closed:
             return "The Hermes gateway session closed."
         case .remote(_, let message):
-            return message
+            return HermesGatewayTextSanitizer.sanitize(message)
+        }
+    }
+}
+
+struct HermesGatewayTextSanitizer: Equatable, Sendable {
+    static func sanitize(_ text: String) -> String {
+        let scalars = Array(text.unicodeScalars)
+        var output = String.UnicodeScalarView()
+        var index = 0
+
+        while index < scalars.count {
+            let scalar = scalars[index]
+            if scalar.value == 0x1B {
+                index = indexAfterANSIEscape(in: scalars, startingAt: index)
+                continue
+            }
+            if scalar.value < 0x20,
+               scalar != "\n",
+               scalar != "\r",
+               scalar != "\t" {
+                index += 1
+                continue
+            }
+            output.append(scalar)
+            index += 1
+        }
+
+        return String(output)
+    }
+
+    private static func indexAfterANSIEscape(in scalars: [UnicodeScalar], startingAt index: Int) -> Int {
+        let nextIndex = index + 1
+        guard nextIndex < scalars.count else { return nextIndex }
+
+        switch scalars[nextIndex] {
+        case "[":
+            var cursor = nextIndex + 1
+            while cursor < scalars.count {
+                let value = scalars[cursor].value
+                cursor += 1
+                if (0x40 ... 0x7E).contains(value) {
+                    break
+                }
+            }
+            return cursor
+        case "]":
+            var cursor = nextIndex + 1
+            while cursor < scalars.count {
+                if scalars[cursor].value == 0x07 {
+                    return cursor + 1
+                }
+                if scalars[cursor].value == 0x1B,
+                   cursor + 1 < scalars.count,
+                   scalars[cursor + 1] == "\\" {
+                    return cursor + 2
+                }
+                cursor += 1
+            }
+            return cursor
+        default:
+            return nextIndex + 1
         }
     }
 }
@@ -100,11 +161,152 @@ enum HermesGatewayCommandAction: Equatable, Sendable {
     case none
 }
 
+struct HermesSlashCommandCatalogEntry: Identifiable, Equatable, Hashable, Sendable {
+    let name: String
+    let usage: String
+    let description: String?
+    let category: String?
+    let aliases: [String]
+    let isSkill: Bool
+
+    var id: String { usage }
+}
+
+enum HermesSlashCommandCatalogParser {
+    static func parse(_ value: JSONValue?) -> [HermesSlashCommandCatalogEntry] {
+        guard let value else { return [] }
+        var entries: [HermesSlashCommandCatalogEntry] = []
+        collectEntries(from: value, inheritedCategory: nil, into: &entries)
+
+        var seen = Set<String>()
+        return entries.filter { entry in
+            let key = entry.name.lowercased()
+            guard !seen.contains(key) else { return false }
+            seen.insert(key)
+            return true
+        }
+        .sorted { lhs, rhs in
+            lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private static func collectEntries(
+        from value: JSONValue,
+        inheritedCategory: String?,
+        into entries: inout [HermesSlashCommandCatalogEntry]
+    ) {
+        switch value {
+        case .array(let values):
+            for item in values {
+                collectEntries(from: item, inheritedCategory: inheritedCategory, into: &entries)
+            }
+        case .object(let object):
+            let category = string(in: object, keys: ["category", "section", "group", "title"]) ?? inheritedCategory
+            if let entry = entry(from: object, inheritedCategory: category) {
+                entries.append(entry)
+            }
+
+            for key in ["commands", "items", "entries", "children", "sections", "skills"] {
+                if let nested = object[key] {
+                    collectEntries(from: nested, inheritedCategory: category, into: &entries)
+                }
+            }
+        case .string(let text):
+            entries.append(contentsOf: parseTextCatalog(text, inheritedCategory: inheritedCategory))
+        default:
+            break
+        }
+    }
+
+    private static func entry(
+        from object: [String: JSONValue],
+        inheritedCategory: String?
+    ) -> HermesSlashCommandCatalogEntry? {
+        guard let rawCommand = string(in: object, keys: ["command", "usage", "name", "label"]),
+              let normalized = normalizedCommand(rawCommand) else {
+            return nil
+        }
+
+        let usage = rawCommand.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/")
+            ? rawCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+            : normalized
+        let type = string(in: object, keys: ["type", "kind", "source"])?.lowercased()
+        let aliases = aliases(in: object)
+
+        return HermesSlashCommandCatalogEntry(
+            name: normalized,
+            usage: usage,
+            description: string(in: object, keys: ["description", "summary", "help", "text"]),
+            category: inheritedCategory,
+            aliases: aliases,
+            isSkill: type?.contains("skill") == true || inheritedCategory?.localizedCaseInsensitiveContains("skill") == true
+        )
+    }
+
+    private static func parseTextCatalog(_ text: String, inheritedCategory: String?) -> [HermesSlashCommandCatalogEntry] {
+        text.split(whereSeparator: \.isNewline).compactMap { rawLine in
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let command = normalizedCommand(line) else { return nil }
+            let description: String?
+            if let separatorRange = line.range(of: " — ") ?? line.range(of: " - ") {
+                description = String(line[separatorRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                description = nil
+            }
+            return HermesSlashCommandCatalogEntry(
+                name: command,
+                usage: command,
+                description: description,
+                category: inheritedCategory,
+                aliases: [],
+                isSkill: inheritedCategory?.localizedCaseInsensitiveContains("skill") == true
+            )
+        }
+    }
+
+    private static func normalizedCommand(_ rawValue: String) -> String? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let slashIndex = trimmed.firstIndex(of: "/") else { return nil }
+        let suffix = trimmed[slashIndex...]
+        let token = suffix.split(whereSeparator: { $0.isWhitespace || $0 == "`" || $0 == "," || $0 == ")" }).first
+        guard let token else { return nil }
+        let command = String(token).trimmingCharacters(in: CharacterSet(charactersIn: "`.,)"))
+        guard command.hasPrefix("/"), command.count > 1 else { return nil }
+        return command
+    }
+
+    private static func aliases(in object: [String: JSONValue]) -> [String] {
+        guard let value = object["aliases"] ?? object["alias"] else { return [] }
+        switch value {
+        case .array(let values):
+            return values.compactMap { $0.stringValue }.compactMap(normalizedCommand)
+        case .string(let value):
+            return value
+                .split(separator: ",")
+                .map(String.init)
+                .compactMap(normalizedCommand)
+        default:
+            return []
+        }
+    }
+
+    private static func string(in object: [String: JSONValue], keys: [String]) -> String? {
+        for key in keys {
+            if let value = object[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !value.isEmpty {
+                return HermesGatewayTextSanitizer.sanitize(value)
+            }
+        }
+        return nil
+    }
+}
+
 struct HermesGatewayCommandResult: Equatable, Sendable {
     let type: String?
     let message: String?
     let output: String?
     let target: String?
+    let notice: String?
 
     init(_ value: JSONValue?) {
         let object = value?.objectValue ?? [:]
@@ -112,6 +314,7 @@ struct HermesGatewayCommandResult: Equatable, Sendable {
         message = Self.string(in: object, keys: ["message", "text", "prompt"])
         output = Self.string(in: object, keys: ["output", "result", "stdout"])
         target = Self.string(in: object, keys: ["target", "command", "alias"])
+        notice = Self.string(in: object, keys: ["notice"])
     }
 
     var primaryAction: HermesGatewayCommandAction {
@@ -141,7 +344,7 @@ struct HermesGatewayCommandResult: Equatable, Sendable {
         for key in keys {
             if let value = object[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
                !value.isEmpty {
-                return value
+                return HermesGatewayTextSanitizer.sanitize(value)
             }
         }
         return nil
@@ -320,7 +523,7 @@ actor HermesGatewayRPCClient {
     }
 
     func handleStderrText(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .newlines)
+        let trimmed = HermesGatewayTextSanitizer.sanitize(text).trimmingCharacters(in: .newlines)
         guard !trimmed.isEmpty else { return }
         eventContinuation.yield(
             HermesGatewayEvent(
