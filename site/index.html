@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hermes Desktop</title>
-  <meta name="description" content="Hermes Desktop is a native macOS workspace for Hermes Agent over SSH. Sessions, workflows, Kanban, files, skills, cron jobs, usage, and a real terminal, with the host as source of truth.">
+  <title>Hermes Desktop — A native Mac app for your Hermes Agent host</title>
+  <meta name="description" content="Hermes Desktop is a native macOS app for your Hermes Agent host. Browse sessions, edit files, run a real terminal — all over SSH, no gateway, no second copy of your data.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Geist+Mono:wght@500;600;700&display=swap" rel="stylesheet">
@@ -132,7 +132,6 @@
 
     .hero-panel,
     .card,
-    .quote,
     .footer-box {
       border: 3px solid var(--line);
       background: var(--paper);
@@ -143,6 +142,8 @@
       padding: 1.6rem;
       background: linear-gradient(180deg, #141414 0%, #1c1c1c 100%);
       color: #fff8f1;
+      display: flex;
+      flex-direction: column;
     }
 
     .kicker,
@@ -167,14 +168,18 @@
     }
 
     h1 {
-      font-size: clamp(3.8rem, 10vw, 7.6rem);
-      margin-top: 1rem;
+      font-size: clamp(3.4rem, 9vw, 6.6rem);
+      margin-top: 0.9rem;
+    }
+
+    h2 {
+      font-size: clamp(1.9rem, 4vw, 2.6rem);
     }
 
     .hero-copy p {
-      margin: 1.3rem 0 0;
-      max-width: 42rem;
-      font-size: 1.05rem;
+      margin: 1.2rem 0 0;
+      max-width: 38rem;
+      font-size: 1.02rem;
       color: #efe4d7;
     }
 
@@ -192,40 +197,11 @@
       gap: 1.2rem;
     }
 
-    .hero-stat {
-      padding: 1.3rem;
-      min-height: 11rem;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      background: repeating-linear-gradient(
-        -45deg,
-        #ece5d9,
-        #ece5d9 18px,
-        #e3dacd 18px,
-        #e3dacd 36px
-      );
-    }
-
-    .hero-stat strong {
-      display: block;
-      font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
-      font-size: clamp(2.1rem, 5vw, 3.4rem);
-      line-height: 0.92;
-      text-transform: uppercase;
-    }
-
-    .hero-stat p {
-      margin: 0.8rem 0 0;
-      font-size: 0.98rem;
-      color: var(--muted);
-    }
-
     .hero-terminal {
       overflow: hidden;
       background: #141414;
       color: #fff8f1;
-      min-height: 16rem;
+      min-height: 18rem;
     }
 
     .terminal-chrome {
@@ -287,48 +263,60 @@
 
     section { padding: 1.5rem 0; }
 
-    .section-head {
-      display: grid;
-      grid-template-columns: 0.7fr 1.3fr;
+    .section-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
       gap: 1.2rem;
-      align-items: stretch;
       margin-bottom: 1.2rem;
+      flex-wrap: wrap;
     }
 
-    .section-head > * { padding: 1.3rem; }
-
-    .section-head .card:first-child {
-      background: var(--ink);
-      color: #fff8f1;
+    .section-title p {
+      margin: 0;
+      max-width: 36rem;
+      color: var(--muted);
+      font-size: 0.98rem;
     }
 
-    .section-head p {
-      margin: 0.9rem 0 0;
-      font-size: 1rem;
+    .feature-group {
+      margin-bottom: 1.6rem;
     }
 
-    .thesis-grid,
-    .feature-grid,
-    .proof-grid,
-    .steps {
-      display: grid;
-      gap: 1.2rem;
+    .feature-group:last-child {
+      margin-bottom: 0;
     }
 
-    .thesis-grid {
-      grid-template-columns: repeat(3, 1fr);
+    .feature-group-head {
+      display: flex;
+      align-items: baseline;
+      gap: 0.8rem 1.1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.9rem;
+      padding-bottom: 0.55rem;
+      border-bottom: 2px solid var(--line);
+    }
+
+    .feature-group-head .micro {
+      color: var(--accent);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .feature-group-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
     }
 
     .feature-grid {
-      grid-template-columns: repeat(3, 1fr);
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.2rem;
     }
 
-    .proof-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .steps {
-      grid-template-columns: repeat(3, 1fr);
+    .feature-grid .card:last-child:nth-child(odd) {
+      grid-column: 1 / -1;
     }
 
     .card {
@@ -336,49 +324,116 @@
     }
 
     .card h3 {
-      font-size: 2rem;
+      font-size: 1.9rem;
       margin-top: 0.8rem;
     }
 
-    .card p,
-    .card li {
+    .card p {
+      margin: 0.9rem 0 0;
       font-size: 0.97rem;
       color: var(--muted);
     }
 
-    .card ul {
-      margin: 1rem 0 0;
-      padding-left: 1.15rem;
+    .install-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.2rem;
     }
 
-    .quote {
-      padding: 1.4rem;
-      background: var(--accent);
-      color: var(--accent-ink);
-    }
-
-    .quote p {
-      margin: 0.9rem 0 0;
-      font-size: 1.15rem;
-      line-height: 1.45;
-      max-width: 55rem;
-    }
-
-    .proof-grid .card:first-child {
-      background: #181818;
+    .prereqs {
+      margin-top: 1.2rem;
+      padding: 1.2rem 1.3rem;
+      border: 3px solid var(--line);
+      background: var(--ink);
       color: #fff8f1;
     }
 
-    .proof-grid .card:first-child p,
-    .proof-grid .card:first-child li {
-      color: #ddd0c0;
+    .prereqs .micro { color: #ff9d8d; }
+
+    .prereqs ul {
+      margin: 0.9rem 0 0;
+      padding-left: 1.15rem;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.4rem 1.2rem;
     }
+
+    .prereqs li {
+      color: #ddd0c0;
+      font-size: 0.95rem;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.92em;
+      background: rgba(17, 17, 17, 0.08);
+      padding: 0.12rem 0.35rem;
+    }
+
+    .prereqs code {
+      background: rgba(255, 248, 241, 0.12);
+    }
+
+    .faq {
+      display: grid;
+      gap: 0.8rem;
+    }
+
+    .faq details {
+      border: 3px solid var(--line);
+      background: var(--paper);
+      box-shadow: 6px 6px 0 var(--line);
+      padding: 0;
+    }
+
+    .faq summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 1rem 1.2rem;
+      font-weight: 600;
+      font-size: 1.02rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .faq summary::-webkit-details-marker { display: none; }
+
+    .faq summary::after {
+      content: "+";
+      font-family: var(--font-mono);
+      font-size: 1.4rem;
+      line-height: 1;
+      color: var(--accent);
+      transition: transform 120ms ease;
+    }
+
+    .faq details[open] summary::after {
+      content: "−";
+    }
+
+    .faq .faq-body {
+      padding: 0 1.2rem 1.1rem;
+      color: var(--muted);
+      font-size: 0.97rem;
+      max-width: 56rem;
+    }
+
+    .faq .faq-body p { margin: 0 0 0.7rem; }
+    .faq .faq-body p:last-child { margin-bottom: 0; }
 
     .star-card {
       display: grid;
       grid-template-columns: 0.38fr 0.62fr;
       overflow: hidden;
       padding: 0;
+    }
+
+    .star-card-wrapper {
+      border: 3px solid var(--line);
+      background: var(--paper);
+      box-shadow: 10px 10px 0 var(--line);
     }
 
     .star-copy {
@@ -405,23 +460,6 @@
       object-fit: contain;
     }
 
-    code {
-      font-family: var(--font-mono);
-      font-size: 0.92em;
-      background: rgba(17, 17, 17, 0.08);
-      padding: 0.12rem 0.35rem;
-    }
-
-    .terminal {
-      margin-top: 1rem;
-      padding: 1rem;
-      border: 3px solid currentColor;
-      font-family: var(--font-mono);
-      background: rgba(0, 0, 0, 0.18);
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
     .footer-box {
       margin: 2rem 0 3rem;
       padding: 1.4rem;
@@ -446,12 +484,14 @@
 
     @media (max-width: 980px) {
       .hero,
-      .section-head,
-      .thesis-grid,
       .feature-grid,
-      .proof-grid,
-      .steps {
+      .install-grid,
+      .prereqs ul {
         grid-template-columns: 1fr;
+      }
+
+      .feature-grid .card:last-child:nth-child(odd) {
+        grid-column: auto;
       }
 
       .star-card {
@@ -488,10 +528,10 @@
     <div class="shell topbar-inner">
       <a class="brand" href="#top">Hermes<span> Desktop</span></a>
       <nav class="topnav" aria-label="Primary">
-        <a href="#thesis">Thesis</a>
         <a href="#features">Features</a>
-        <a href="#setup">Setup</a>
-        <a href="https://github.com/dodo-reach/hermes-desktop/releases">Releases</a>
+        <a href="#install">Install</a>
+        <a href="#help">Help</a>
+        <a href="https://github.com/dodo-reach/hermes-desktop">GitHub</a>
       </nav>
     </div>
   </header>
@@ -499,23 +539,22 @@
   <main id="top" class="shell">
     <section class="hero">
       <div class="hero-panel hero-copy">
-        <div class="kicker">Native macOS workspace for Hermes Agent</div>
-        <h1>Stay close to the <span class="hero-accent">host</span>.</h1>
+        <div class="kicker">Native macOS · Hermes Agent client</div>
+        <h1>Hermes<br><span class="hero-accent">Desktop</span></h1>
         <p>
-          Hermes Desktop is a native Mac app for
-          <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a>. It
-          brings sessions, workflows, files, skills, cron jobs, Kanban, usage,
-          and a real terminal into one place. The host stays the source of
-          truth.
+          A native Mac app for your
+          <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a> host.
+          Browse sessions, edit files, run a real terminal — all over SSH, no
+          gateway, no second copy of your data.
         </p>
         <div class="hero-actions">
-          <a class="cta" href="https://github.com/dodo-reach/hermes-desktop/releases">Download Release</a>
-          <a class="cta secondary" href="https://github.com/dodo-reach/hermes-desktop">View source</a>
+          <a class="cta" href="https://github.com/dodo-reach/hermes-desktop/releases/latest">Download for Mac</a>
+          <a class="cta secondary" href="https://github.com/dodo-reach/hermes-desktop">View source on GitHub</a>
         </div>
       </div>
 
       <div class="hero-side">
-        <div class="hero-panel hero-terminal" aria-label="Terminal preview: ssh host, connected, no gateway, no mirror, no second state, hermes-desktop ready">
+        <div class="hero-panel hero-terminal" aria-label="Terminal preview: ssh host, connection secure, Hermes ready, hermes-desktop ready, Work, reloading">
           <div class="terminal-chrome" aria-hidden="true">
             <span class="terminal-dot"></span>
             <span class="terminal-dot"></span>
@@ -523,234 +562,254 @@
           </div>
           <div class="terminal-screen" aria-hidden="true" data-terminal-typewriter>
             <span class="terminal-line terminal-command" data-terminal-line="$ ssh host"></span>
-            <span class="terminal-line" data-terminal-line="connected"></span>
+            <span class="terminal-line" data-terminal-line="connection secure"></span>
             <span class="terminal-gap"></span>
-            <span class="terminal-line" data-terminal-line="no gateway"></span>
-            <span class="terminal-line" data-terminal-line="no mirror"></span>
-            <span class="terminal-line" data-terminal-line="no second state"></span>
+            <span class="terminal-line" data-terminal-line="Hermes: ready"></span>
+            <span class="terminal-line" data-terminal-line="hermes-desktop: ready"></span>
             <span class="terminal-gap"></span>
-            <span class="terminal-line terminal-ready" data-terminal-line="hermes-desktop ready"></span>
+            <span class="terminal-line" data-terminal-line="Work"></span>
             <span class="terminal-line terminal-reloading" data-terminal-line="reloading"></span>
             <span class="terminal-cursor" data-terminal-cursor></span>
           </div>
-        </div>
-
-        <div class="hero-panel hero-stat">
-          <div class="micro">Product stance</div>
-          <strong>One host.<br>One truth.</strong>
-          <p>
-            Direct SSH. Real host state. No extra layer.
-          </p>
-        </div>
-
-      </div>
-    </section>
-
-    <section id="thesis">
-      <div class="section-head">
-        <div class="card">
-          <div class="micro">Core thesis</div>
-          <h2>Simple.<br>Native.<br>Direct.</h2>
-        </div>
-        <div class="card">
-          <div class="micro">Why this exists</div>
-          <p>
-            Hermes Desktop makes the Hermes host feel natural on a Mac without
-            changing how Hermes works.
-          </p>
-        </div>
-      </div>
-
-      <div class="thesis-grid">
-        <div class="card">
-          <div class="micro">Transport</div>
-          <h3>SSH first</h3>
-          <p>
-            It connects the same way you already do: over SSH.
-          </p>
-        </div>
-        <div class="card">
-          <div class="micro">State model</div>
-          <h3>No second layer</h3>
-          <p>
-            No local mirror. No second copy. No gateway.
-          </p>
-        </div>
-        <div class="card">
-          <div class="micro">User promise</div>
-          <h3>You know where you are</h3>
-          <p>
-            Same host, same files, same profiles.
-          </p>
         </div>
       </div>
     </section>
 
     <section id="features">
-      <div class="section-head">
-        <div class="card">
-          <div class="micro">What you get</div>
-          <h2>One window<br>for the real<br>host.</h2>
+      <div class="section-title">
+        <h2>What you can do</h2>
+        <p>Every part of Hermes, in one window. Read from the host — never mirrored to your Mac.</p>
+      </div>
+
+      <div class="feature-group">
+        <div class="feature-group-head">
+          <div class="micro">Talk to Hermes</div>
+          <p>The surfaces where you actually have a conversation with the agent.</p>
         </div>
-        <div class="card">
-          <div class="micro">Included</div>
-          <p>
-            Choose an SSH profile and work with the same remote Hermes state
-            you already use: sessions, workflows, Kanban, files, usage,
-            skills, cron jobs, and shell.
-          </p>
+        <div class="feature-grid">
+          <div class="card">
+            <div class="micro">Chat and transcripts</div>
+            <h3>Sessions</h3>
+            <p>Search transcripts, pin work, start a new chat, or resume in the terminal. The chat runs the real Hermes TUI on the host.</p>
+          </div>
+          <div class="card">
+            <div class="micro">Real SSH shell</div>
+            <h3>Terminal</h3>
+            <p>Inside the app, with tabs and themes for multi-profile, multi-agent work.</p>
+          </div>
         </div>
       </div>
 
-      <div class="feature-grid">
-        <div class="card">
-          <div class="micro">Connections + workflows</div>
-          <h3>Save your setup</h3>
-          <p>
-            Save SSH profiles and reusable workflows for each host and Hermes
-            profile.
-          </p>
+      <div class="feature-group">
+        <div class="feature-group-head">
+          <div class="micro">Plan, schedule, reuse</div>
+          <p>Where Hermes's work gets coordinated, scheduled, and saved for next time.</p>
         </div>
-        <div class="card">
-          <div class="micro">Sessions</div>
-          <h3>Pick up any thread</h3>
-          <p>
-            Browse history, search transcripts, pin work, continue a chat, or
-            resume in Terminal.
-          </p>
-        </div>
-        <div class="card">
-          <div class="micro">Kanban</div>
-          <h3>Orchestrate your agents</h3>
-          <p>
-            Create, assign, comment, block, complete, and inspect tasks from
-            the host-wide <code>~/.hermes/kanban.db</code>.
-          </p>
-        </div>
-        <div class="card">
-          <div class="micro">Files + skills</div>
-          <h3>Edit the live workspace</h3>
-          <p>
-            Edit canonical Hermes files, bookmarked remote text files, and
-            <code>SKILL.md</code> files with conflict checks before save.
-          </p>
-        </div>
-        <div class="card">
-          <div class="micro">Usage + cron</div>
-          <h3>Review usage and schedules</h3>
-          <p>
-            Check usage totals and trends, and manage recurring cron jobs from
-            the canonical scheduler state.
-          </p>
-        </div>
-        <div class="card">
-          <div class="micro">Terminal</div>
-          <h3>Open a real SSH terminal</h3>
-          <p>
-            Use a real embedded SSH terminal beside the rest of the workspace,
-            with tabs across profiles.
-          </p>
+        <div class="feature-grid">
+          <div class="card">
+            <div class="micro">Task board on the host</div>
+            <h3>Kanban</h3>
+            <p>Create, assign, comment, block, and complete tasks. Multi-agent coordination lives here.</p>
+          </div>
+          <div class="card">
+            <div class="micro">Recurring work</div>
+            <h3>Cron Jobs</h3>
+            <p>The jobs Hermes runs on the host. Create, edit, pause, resume, run now, or delete.</p>
+          </div>
+          <div class="card">
+            <div class="micro">Saved prompt presets</div>
+            <h3>Workflows</h3>
+            <p>On your Mac, scoped to each host and profile. Run one and it opens a fresh terminal tab with the first turn ready.</p>
+          </div>
         </div>
       </div>
-    </section>
 
-    <section>
-      <div class="quote">
-        <div class="micro">Positioning</div>
-        <p>
-          The safest and simplest way to manage Hermes on a Mac.
-        </p>
-      </div>
-    </section>
-
-    <section id="setup">
-      <div class="proof-grid">
-        <div class="card">
-          <div class="micro">Before you download</div>
-          <h2>Simple setup.</h2>
-          <p>
-            If SSH already works from this Mac to your Hermes host, setup is
-            usually simple.
-          </p>
-          <div class="terminal">ssh your-host</div>
-          <ul>
-            <li>macOS 14 or newer</li>
-            <li><code>python3</code> available on the Hermes host</li>
-            <li><code>hermes</code> available on the host’s non-interactive SSH path</li>
-            <li>Hermes data under the remote user’s <code>~/.hermes</code></li>
-          </ul>
+      <div class="feature-group">
+        <div class="feature-group-head">
+          <div class="micro">Edit the workspace</div>
+          <p>The files that define how Hermes works, and the ones it works on.</p>
         </div>
+        <div class="feature-grid">
+          <div class="card">
+            <div class="micro">Workspace files</div>
+            <h3>Files</h3>
+            <p>Canonical Hermes files and <code>SKILL.md</code> on the host, opened remotely. Conflict check runs before save.</p>
+          </div>
+          <div class="card">
+            <div class="micro"><code>SKILL.md</code> files</div>
+            <h3>Skills</h3>
+            <p>Discover, read metadata, create new skills, edit existing ones — anchored to the host's skills store.</p>
+          </div>
+          <div class="card">
+            <div class="micro">How the agent thinks and behaves</div>
+            <h3>Memory</h3>
+            <p>Edit the files that store what Hermes knows about you, what it remembers, and how it acts. Plain text on the host, with conflict check before save.</p>
+          </div>
+        </div>
+      </div>
 
-        <div class="card">
-          <div class="micro">Trust model</div>
-          <h2>Easy to understand.</h2>
-          <p>
-            No helper service. No gateway API. No desktop copy pretending to be
-            the source of truth.
-          </p>
+      <div class="feature-group">
+        <div class="feature-group-head">
+          <div class="micro">Inspect and manage</div>
+          <p>See what Hermes is doing, and keep the parts you want.</p>
+        </div>
+        <div class="feature-grid">
+          <div class="card">
+            <div class="micro">Tokens, sessions, trends</div>
+            <h3>Usage</h3>
+            <p>Token totals, top sessions, top models, and recent activity for the active profile.</p>
+          </div>
+          <div class="card">
+            <div class="micro">What's active on this host</div>
+            <h3>Overview</h3>
+            <p>Active host, active profile, discovered profiles, and the paths Hermes is using.</p>
+          </div>
+          <div class="card">
+            <div class="micro">Manage host profiles</div>
+            <h3>Profiles</h3>
+            <p>The Hermes profiles your host exposes. Keep the ones you use, retire the ones you don't.</p>
+          </div>
         </div>
       </div>
     </section>
 
-    <section>
-      <div class="steps">
+    <section id="install">
+      <div class="section-title">
+        <h2>Install</h2>
+        <p>If SSH already works from this Mac to your Hermes host, the rest is short.</p>
+      </div>
+      <div class="install-grid">
         <div class="card">
-          <div class="micro">01</div>
-          <h3>Add a host</h3>
+          <div class="micro">01 · Download</div>
+          <h3>Download the app</h3>
+          <p>Get <code>HermesDesktop.app.zip</code> from the latest GitHub release.</p>
         </div>
         <div class="card">
-          <div class="micro">02</div>
-          <h3>Select profile</h3>
+          <div class="micro">02 · Install</div>
+          <h3>Move it to Applications</h3>
+          <p>Unzip, then drag <code>HermesDesktop.app</code> into Applications and replace the old copy if asked.</p>
         </div>
         <div class="card">
-          <div class="micro">03</div>
-          <h3>Start working</h3>
+          <div class="micro">03 · First launch</div>
+          <h3>Right-click → Open</h3>
+          <p>macOS will warn that the app is not notarized. Right-click the app, choose Open, then Open again. Don't move it to the bin.</p>
         </div>
+      </div>
+      <div class="prereqs">
+        <div class="micro">Before you install</div>
+        <ul>
+          <li>macOS 14 or newer</li>
+          <li>SSH to the Hermes host already works</li>
+          <li><code>python3</code> available on the host</li>
+          <li><code>hermes</code> on the host's non-interactive <code>PATH</code></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="help">
+      <div class="section-title">
+        <h2>Help</h2>
+        <p>The same questions people ask after they install. If yours isn't here, open an issue on GitHub.</p>
+      </div>
+      <div class="faq">
+        <details>
+          <summary>Where is my data stored?</summary>
+          <div class="faq-body">
+            <p>On the host, in the standard Hermes location: <code>~/.hermes</code>. If you set a Hermes profile in the connection, the app uses <code>~/.hermes/profiles/&lt;name&gt;</code> instead. The Mac app does not copy or mirror that data.</p>
+            <p>The only things the app stores locally are your saved connection profiles and preferences, in <code>~/Library/Application Support/HermesDesktop/</code>.</p>
+          </div>
+        </details>
+        <details>
+          <summary>Why does macOS say the app can't be verified or is damaged?</summary>
+          <div class="faq-body">
+            <p>Hermes Desktop is currently ad-hoc signed and not notarized by Apple. The Gatekeeper warning is expected for this distribution model and does not mean the app contains malware.</p>
+            <p>To open it: click <strong>Done</strong> (not "Move to Bin"), then right-click <code>HermesDesktop.app</code> in Applications and choose <strong>Open</strong>. macOS will ask once to confirm.</p>
+            <p>Do not disable Gatekeeper or run <code>sudo</code> commands to install the app. If you'd rather not trust the release zip, build from source.</p>
+          </div>
+        </details>
+        <details>
+          <summary>Why is "Test" failing on my connection?</summary>
+          <div class="faq-body">
+            <p>Test is a preflight. It checks three things in order:</p>
+            <p>1. The SSH target is reachable from this Mac.<br>2. SSH authentication works without interactive prompts (no password prompt, no host-key confirmation).<br>3. <code>python3</code> is available in the remote SSH environment.</p>
+            <p>The error in the app names the first check that failed. The most common cause is an SSH config that asks for a password or host-key confirmation on first connect — run <code>ssh your-host</code> in Terminal once first to accept the host key.</p>
+          </div>
+        </details>
+        <details>
+          <summary>What does the "Hermes profile" setting do?</summary>
+          <div class="faq-body">
+            <p>It scopes the app to <code>~/.hermes/profiles/&lt;name&gt;</code> on the host instead of the default profile. It's not just a label — every section in the app (Sessions, Workflows, Files, Skills, Cron, Usage, chat, Terminal) follows the selected host and profile.</p>
+            <p>Leave it empty to use the default <code>~/.hermes</code>. The app still discovers other profiles available on the active host.</p>
+          </div>
+        </details>
+        <details>
+          <summary>How do I update?</summary>
+          <div class="faq-body">
+            <p>Download the latest <code>HermesDesktop.app.zip</code> from the releases page and replace the app in Applications. Your saved connections and preferences are kept — they live in <code>~/Library/Application Support/HermesDesktop/</code>, outside the app bundle.</p>
+          </div>
+        </details>
+        <details>
+          <summary>Where are the logs?</summary>
+          <div class="faq-body">
+            <p>Workflow launch diagnostics are written to <code>~/Library/Application Support/HermesDesktop/Diagnostics/workflow-launch-latest.log</code>.</p>
+            <p>For everything else, open <strong>Console.app</strong> on the Mac and filter by the subsystem <code>HermesDesktop</code>.</p>
+          </div>
+        </details>
+        <details>
+          <summary>Where do I report a bug or ask for a feature?</summary>
+          <div class="faq-body">
+            <p>Open an issue on GitHub: <a href="https://github.com/dodo-reach/hermes-desktop/issues">dodo-reach/hermes-desktop/issues</a>.</p>
+            <p>Useful to include: macOS version, app version (from the in-app About), what you expected vs what happened, and the diagnostics log if the problem is in a workflow launch.</p>
+          </div>
+        </details>
       </div>
     </section>
 
     <section aria-labelledby="star-history-title">
-      <div class="card star-card">
-        <div class="star-copy">
-          <div class="micro">GitHub stars</div>
-          <h2 id="star-history-title">Star<br>history.</h2>
-          <p>
-            Thank you to everyone starring the project and helping Hermes
-            Desktop grow.
-          </p>
+      <div class="section-title">
+        <h2 id="star-history-title">GitHub stars</h2>
+        <p>Thanks to everyone who starred the project. The chart tracks growth over time.</p>
+      </div>
+      <div class="star-card-wrapper">
+        <div class="star-card">
+          <div class="star-copy">
+            <div class="micro">Star history</div>
+            <h2>Help it grow.</h2>
+            <p>If Hermes Desktop is useful to you, starring the repo helps other people find it.</p>
+            <p style="margin-top: 0.8rem;"><a class="cta secondary" style="padding: 0.6rem 0.9rem; font-size: 0.74rem; box-shadow: 4px 4px 0 var(--line);" href="https://github.com/dodo-reach/hermes-desktop">★ Star on GitHub</a></p>
+          </div>
+          <a
+            class="star-chart-link"
+            href="https://www.star-history.com/?repos=dodo-reach%2Fhermes-desktop&amp;type=date&amp;legend=top-left"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open Hermes Desktop star history on Star History"
+          >
+            <picture>
+              <source
+                media="(prefers-color-scheme: dark)"
+                srcset="https://api.star-history.com/chart?repos=dodo-reach/hermes-desktop&amp;type=date&amp;theme=dark&amp;legend=top-left"
+              >
+              <source
+                media="(prefers-color-scheme: light)"
+                srcset="https://api.star-history.com/chart?repos=dodo-reach/hermes-desktop&amp;type=date&amp;legend=top-left"
+              >
+              <img
+                src="https://api.star-history.com/chart?repos=dodo-reach/hermes-desktop&amp;type=date&amp;legend=top-left"
+                alt="Star History chart for dodo-reach/hermes-desktop"
+                loading="lazy"
+              >
+            </picture>
+          </a>
         </div>
-
-        <a
-          class="star-chart-link"
-          href="https://www.star-history.com/?repos=dodo-reach%2Fhermes-desktop&amp;type=date&amp;legend=top-left"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Open Hermes Desktop star history on Star History"
-        >
-          <picture>
-            <source
-              media="(prefers-color-scheme: dark)"
-              srcset="https://api.star-history.com/chart?repos=dodo-reach/hermes-desktop&amp;type=date&amp;theme=dark&amp;legend=top-left"
-            >
-            <source
-              media="(prefers-color-scheme: light)"
-              srcset="https://api.star-history.com/chart?repos=dodo-reach/hermes-desktop&amp;type=date&amp;legend=top-left"
-            >
-            <img
-              src="https://api.star-history.com/chart?repos=dodo-reach/hermes-desktop&amp;type=date&amp;legend=top-left"
-              alt="Star History chart for dodo-reach/hermes-desktop"
-              loading="lazy"
-            >
-          </picture>
-        </a>
       </div>
     </section>
 
     <div class="footer-box">
       <div>
         <div class="micro">Hermes Desktop</div>
-        <h3>Open source. Native. Direct.</h3>
-        <p>Work on the host.</p>
+        <h3>Open source. Native. Over SSH.</h3>
+        <p>Work on the host, not on a copy of it.</p>
       </div>
       <div class="hero-actions footer-actions">
         <a class="cta" href="https://github.com/dodo-reach/hermes-desktop">GitHub</a>

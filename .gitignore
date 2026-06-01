@@ -4,6 +4,7 @@
 /.build-tests
 /.cache
 /.deriveddata
+/.deriveddata-*
 /.deriveddata-device
 /dist
 /docs/*

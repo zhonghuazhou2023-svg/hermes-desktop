@@ -84,6 +84,13 @@ write_release_manifest() {
 
 "$ROOT_DIR/scripts/build-macos-app.sh"
 
+PACKAGED_VERSION="$(plist_read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString)"
+if [[ -z "$PACKAGED_VERSION" || "$PACKAGED_VERSION" == "0.0.0" ]]; then
+    echo "error: refusing to package a release archive with placeholder version '$PACKAGED_VERSION'." >&2
+    echo "Set HERMES_VERSION or package from an exact vX.Y.Z tag." >&2
+    exit 1
+fi
+
 rm -f "$ZIP_PATH"
 rm -f "$SHA256_PATH"
 rm -f "$MANIFEST_PATH"
