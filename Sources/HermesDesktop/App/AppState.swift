@@ -159,7 +159,8 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
-        self.activeConnectionID = connectionStore.lastConnectionID
+        self.activeConnectionID = resolvedActiveConnectionID(preferred: connectionStore.lastConnectionID)
+        persistActiveConnectionSelectionIfNeeded()
 
         selectedSection = .connections
     }
@@ -474,6 +475,7 @@ final class AppState: ObservableObject {
         let normalized = profile.updated()
         let previous = connectionStore.connections.first(where: { $0.id == normalized.id })
         let isActiveConnection = activeConnectionID == normalized.id
+        let shouldActivateSavedConnection = activeConnection == nil
         let isChangingWorkspaceScope = previous?.workspaceScopeFingerprint != normalized.workspaceScopeFingerprint
 
         if isActiveConnection && isChangingWorkspaceScope && hasUnsavedFileChanges {
@@ -485,6 +487,11 @@ final class AppState: ObservableObject {
         }
 
         connectionStore.upsert(normalized)
+
+        if shouldActivateSavedConnection {
+            activeConnectionID = normalized.id
+            connectionStore.lastConnectionID = normalized.id
+        }
 
         guard isActiveConnection else { return }
         guard isChangingWorkspaceScope else { return }
@@ -2321,10 +2328,12 @@ final class AppState: ObservableObject {
     }
 
     func deleteConnection(_ profile: ConnectionProfile) {
+        let isDeletingActiveConnection = activeConnectionID == profile.id
         connectionStore.delete(profile)
         terminalWorkspace.closeTabs(forConnectionID: profile.id)
-        if activeConnectionID == profile.id {
-            activeConnectionID = nil
+        if isDeletingActiveConnection {
+            activeConnectionID = resolvedActiveConnectionID(preferred: connectionStore.lastConnectionID)
+            persistActiveConnectionSelectionIfNeeded()
             resetWorkspaceStateForConnectionChange(closeTerminalTabs: false)
             selectedSection = .connections
         }
@@ -2340,6 +2349,20 @@ final class AppState: ObservableObject {
         selectedSection = .terminal
         handleSectionEntry(.terminal)
         setStatusMessage(L10n.string("New Terminal tab opened"))
+    }
+
+    private func resolvedActiveConnectionID(preferred preferredID: UUID?) -> UUID? {
+        if let preferredID,
+           connectionStore.connections.contains(where: { $0.id == preferredID }) {
+            return preferredID
+        }
+
+        return connectionStore.connections.first?.id
+    }
+
+    private func persistActiveConnectionSelectionIfNeeded() {
+        guard connectionStore.lastConnectionID != activeConnectionID else { return }
+        connectionStore.lastConnectionID = activeConnectionID
     }
 
     func resumeSessionInTerminal(_ session: SessionSummary) {
