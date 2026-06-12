@@ -171,6 +171,10 @@ final class AppState: ObservableObject {
         return connectionStore.connections.first(where: { $0.id == activeConnectionID })
     }
 
+    var webUIBaseURL: URL {
+        URL(string: "http://localhost:8787")!
+    }
+
     var selectedKanbanBoard: KanbanProject? {
         kanbanBoards.first(where: { $0.slug == selectedKanbanBoardSlug })
     }
@@ -253,7 +257,7 @@ final class AppState: ObservableObject {
             return !isLoadingUsage && !isRefreshingUsage
         case .skills:
             return !isLoadingSkills && !isRefreshingSkills
-        case .files, .terminal:
+        case .files, .terminal, .webchat, .fleet, .orchestra, .memory, .plans:
             return false
         }
     }
@@ -270,7 +274,7 @@ final class AppState: ObservableObject {
         switch selectedSection {
         case .sessions, .workflows, .cronjobs, .kanban, .skills:
             return true
-        case .connections, .files, .usage, .terminal:
+        case .connections, .files, .usage, .terminal, .webchat, .fleet, .orchestra, .memory, .plans:
             return false
         }
     }
@@ -386,7 +390,7 @@ final class AppState: ObservableObject {
             await refreshUsage()
         case .skills:
             await refreshSkills()
-        case .files, .terminal:
+        case .files, .terminal, .webchat, .fleet, .orchestra, .memory, .plans:
             break
         }
     }
@@ -2451,6 +2455,14 @@ final class AppState: ObservableObject {
             Task { await loadSkills(reset: true) }
         case .terminal:
             ensureTerminalSession()
+        case .webchat:
+            break
+        case .fleet:
+            break  // Fleet uses HTTP API, no SSH needed
+        case .orchestra:
+            break
+        case .memory, .plans:
+            break
         }
     }
 
@@ -2556,6 +2568,14 @@ final class AppState: ObservableObject {
             await loadSkills(reset: true)
         case .terminal:
             ensureTerminalSession()
+        case .webchat:
+            break
+        case .fleet:
+            break
+        case .orchestra:
+            break
+        case .memory, .plans:
+            break
         }
     }
 

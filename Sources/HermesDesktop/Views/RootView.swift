@@ -65,6 +65,8 @@ struct RootView: View {
                 if let statusMessage = appState.statusMessage {
                     Text(statusMessage)
                         .font(.caption)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(.thinMaterial, in: Capsule())
@@ -249,7 +251,7 @@ struct RootView: View {
             return $filesSplitLayout
         case .skills:
             return $skillsSplitLayout
-        case .connections, .usage, .terminal:
+        case .connections, .usage, .terminal, .webchat, .fleet, .orchestra, .memory, .plans:
             return nil
         }
     }
@@ -292,7 +294,7 @@ struct RootView: View {
             return HermesSplitMetrics.WorkbenchDetail.minWidth
         case .kanban, .skills:
             return HermesSplitMetrics.WorkbenchDetail.minWidth
-        case .connections, .usage, .terminal:
+        case .connections, .usage, .terminal, .webchat, .fleet, .orchestra, .memory, .plans:
             return nil
         }
     }
@@ -304,7 +306,7 @@ struct RootView: View {
 
     private var availableSections: [AppSection] {
         if appState.activeConnection == nil {
-            return [.connections]
+            return [.connections, .fleet, .orchestra, .memory, .plans]
         }
         return [.connections] + appState.connectionStore.visibleSidebarSections
     }
@@ -324,10 +326,39 @@ struct RootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    private var isConnectionFreeSection: Bool {
+        switch appState.selectedSection {
+        case .fleet, .orchestra, .memory, .plans:
+            return true
+        default:
+            return false
+        }
+    }
+
+    @ViewBuilder
+    private var connectionFreeSectionContent: some View {
+        switch appState.selectedSection {
+        case .fleet:
+            FleetView()
+        case .orchestra:
+            OrchestraView()
+        case .memory:
+            MemoryView()
+        case .plans:
+            PlansView()
+        default:
+            ConnectionsView()
+        }
+    }
+
     @ViewBuilder
     private var activeDetailContent: some View {
         if appState.activeConnection == nil {
-            ConnectionsView()
+            if isConnectionFreeSection {
+                connectionFreeSectionContent
+            } else {
+                ConnectionsView()
+            }
         } else {
             ZStack {
                 SessionsView(
@@ -389,6 +420,16 @@ struct RootView: View {
                     appState.connectionStore.terminalFontFamily = newValue
                 }
             )
+        case .webchat:
+            WebChatView(webUIURL: appState.webUIBaseURL)
+        case .fleet:
+            FleetView()
+        case .orchestra:
+            OrchestraView()
+        case .memory:
+            MemoryView()
+        case .plans:
+            PlansView()
         }
     }
 }

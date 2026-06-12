@@ -11,6 +11,11 @@ enum AppSection: String, CaseIterable, Codable, Identifiable {
     case usage
     case skills
     case terminal
+    case webchat
+    case fleet
+    case orchestra
+    case memory
+    case plans
 
     var id: String { rawValue }
 
@@ -19,7 +24,7 @@ enum AppSection: String, CaseIterable, Codable, Identifiable {
     }
 
     static var customizableSidebarSections: [AppSection] {
-        [.sessions, .workflows, .cronjobs, .kanban, .files, .usage, .skills, .terminal]
+        [.sessions, .workflows, .webchat, .cronjobs, .kanban, .files, .fleet, .orchestra, .memory, .plans, .usage, .skills, .terminal]
     }
 
     var title: String {
@@ -46,6 +51,16 @@ enum AppSection: String, CaseIterable, Codable, Identifiable {
             "Skills"
         case .terminal:
             "Terminal"
+        case .webchat:
+            "Web Chat"
+        case .fleet:
+            "Fleet"
+        case .orchestra:
+            "Orchestra"
+        case .memory:
+            "Memory"
+        case .plans:
+            "Plans"
         }
     }
 
@@ -69,6 +84,16 @@ enum AppSection: String, CaseIterable, Codable, Identifiable {
             "book.closed"
         case .terminal:
             "terminal"
+        case .webchat:
+            "globe"
+        case .fleet:
+            "square.grid.2x2"
+        case .orchestra:
+            "brain.head.profile"
+        case .memory:
+            "brain.head.profile"
+        case .plans:
+            "checklist"
         }
     }
 
@@ -92,6 +117,16 @@ enum AppSection: String, CaseIterable, Codable, Identifiable {
             return "9"
         case .terminal:
             return "0"
+        case .webchat:
+            return "2"
+        case .fleet:
+            return "f"
+        case .orchestra:
+            return "o"
+        case .memory:
+            return "m"
+        case .plans:
+            return "p"
         }
     }
 }

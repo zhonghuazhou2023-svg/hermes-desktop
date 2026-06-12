@@ -119,6 +119,7 @@
 "Switching away will drop the unsaved edits in the current file." = "切换离开会丢弃当前文件中未保存的编辑。";
 "Terminal" = "终端";
 "Terminal Theme" = "终端主题";
+"Web Chat" = "网页聊天";
 "Test" = "测试";
 "The active Hermes profile and the folders it resolves to on the current host." = "当前 Hermes 配置，以及它在当前主机上解析到的文件夹。";
 "The active SSH connection for this workspace." = "此工作区的当前 SSH 连接。";
