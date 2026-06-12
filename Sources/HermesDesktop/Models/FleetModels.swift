@@ -156,6 +156,9 @@ struct TaskOutput: Codable {
     let error: String?
     let analysis: String?
     let duration_seconds: Double?
+    let confidence: Double?
+    let target: String?
+    let debug: [JSONValue]?
 }
 
 struct TaskReport: Codable {
@@ -197,6 +200,7 @@ struct DAGTask: Codable, Identifiable {
     var isFailed: Bool { status == "failed" || status == "retrying" }
     var isCompleted: Bool { status == "completed" }
     var isSaved: Bool { saved == true }
+    var isExpandable: Bool { true }
 
     static let typeNames: [String: String] = [
         "collect": "采集", "validate": "清洗", "analyze": "分析", "deliver": "推送",
@@ -209,31 +213,50 @@ struct DAGTask: Codable, Identifiable {
 
 struct AppConfig: Codable {
     var default_model: String
+    var models: [String]?
     var workshop_models: [String: String]
+    var workshop_tasks: [String: [String]]?
+    var auto_dispatch: Bool?
 }
 
 struct StatusResponse: Codable {
     let workshops: [String: WSMetrics]
     let dag: [DAGTask]
     let config: AppConfig
+    let active_pipeline: String?
+    let pipeline_defs: [String: PipelineDef]?
 }
 
 struct GpuStatus: Codable {
     let tunnel_active: Bool?
     let ssh_online: Bool?
+    let local_port: Int?
     let local_url: String?
 }
 
 struct UsageStats: Codable {
+    let date: String?
     let input_tokens: Int?
     let output_tokens: Int?
     let sessions: Int?
     let estimated_cost_usd: Double?
+    let model: String?
 }
 
 struct SystemStatus: Codable {
     let pid: Int
+    let started_at: String?
     let uptime_seconds: Int
+
+    var uptimeText: String {
+        let s = uptime_seconds
+        let h = s / 3600
+        let m = (s % 3600) / 60
+        let sec = s % 60
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 { return "\(m)m \(sec)s" }
+        return "\(sec)s"
+    }
 }
 
 struct SkillDeployResponse: Decodable {
@@ -241,3 +264,14 @@ struct SkillDeployResponse: Decodable {
     let path: String?
     let error: String?
 }
+
+// MARK: - Pipeline
+
+struct PipelineDef: Codable {
+    let name: String
+    let stages: [String]
+    let icons: [String: String]
+    let names: [String: String]
+}
+
+// PipelineDef and JSONValue: PipelineDef defined here, JSONValue from SessionModels

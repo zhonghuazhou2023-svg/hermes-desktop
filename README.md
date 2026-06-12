@@ -457,3 +457,14 @@ From here, the work is not about adding novelty for its own sake. It is about:
 
 Anything larger than that should be justified by Hermes itself, not added just
 because it is technically possible.
+
+## Merged projects
+
+### HFConsole → Fleet tab (2026-06-12)
+
+The Fleet dashboard originally lived in a standalone app
+(`~/workspace/HFConsole`, now deprecated). Its workshop overview,
+DAG pipeline viewer, task dispatch, and API client have been merged
+into Hermes Desktop's Fleet tab. The model layer (`FleetModels.swift`)
+now supports both HF and drama pipelines with full parity.
+
