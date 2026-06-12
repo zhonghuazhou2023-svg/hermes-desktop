@@ -91,7 +91,7 @@ enum AppSection: String, CaseIterable, Codable, Identifiable {
         case .orchestra:
             "brain.head.profile"
         case .memory:
-            "brain.head.profile"
+            "memorychip"
         case .plans:
             "checklist"
         }
